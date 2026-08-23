@@ -5,3 +5,4 @@ cors
 bcrypt
 psycopg[binary]
 python-dotenv
+alembic
