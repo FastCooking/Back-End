@@ -1,3 +1,7 @@
 sqlalchemy
 fastapi
+pydantic
 cors
+bcrypt
+psycopg[binary]
+python-dotenv
