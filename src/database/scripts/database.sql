@@ -26,7 +26,7 @@ CREATE TABLE "Mesa" (
     idRestaurante INT NOT NULL REFERENCES "Restaurante"(idRestaurante) ON UPDATE CASCADE ON DELETE CASCADE,
     numero INT NOT NULL,
     capacidade INT NOT NULL DEFAULT 4,
-    status VARCHAR(20) NOT NULL DEFAULT 'livre' CHECK (status IN ('livre', 'ocupada')),
+    status VARCHAR(20) NOT NULL DEFAULT 'Disponivel' CHECK (status IN ('Disponivel', 'Indisponivel')),
     CONSTRAINT uq_restaurante_mesa UNIQUE (idRestaurante, numero)
 );
 
@@ -44,6 +44,7 @@ CREATE TABLE "Cardapio" (
     idCardapio SERIAL PRIMARY KEY,
     idRestaurante INT NOT NULL REFERENCES "Restaurante"(idRestaurante) ON UPDATE CASCADE ON DELETE CASCADE,
     nome VARCHAR(150) NOT NULL,
+    pathImage TEXT NOT NULL,
     descricao TEXT,
     preco NUMERIC(10, 2) NOT NULL CHECK (preco >= 0),
     categoria VARCHAR(100) NOT NULL,
@@ -71,7 +72,6 @@ CREATE TABLE "ItemPedido" (
     idItemPedido SERIAL PRIMARY KEY,
     idPedido INT NOT NULL REFERENCES "Pedido"(idPedido) ON UPDATE CASCADE ON DELETE CASCADE,
     idCardapio INT NOT NULL REFERENCES "Cardapio"(idCardapio) ON UPDATE CASCADE ON DELETE RESTRICT,
-    idCozinheiro INT REFERENCES "Usuarios"(idFuncionario) ON UPDATE CASCADE ON DELETE SET NULL,
     quantidade INT NOT NULL CHECK (quantidade > 0),
     precoUnitario NUMERIC(10, 2) NOT NULL CHECK (precoUnitario >= 0),
     status VARCHAR(30) NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente', 'Em preparo', 'Pronto', 'Entregue', 'Cancelado')),
