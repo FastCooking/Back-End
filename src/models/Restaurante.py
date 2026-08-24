@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Boolean
 from sqlalchemy.orm import relationship, Session
 from src.database.connection import Base
 
@@ -7,8 +7,13 @@ from src.database.connection import Base
 class Restaurante(Base):
     __tablename__ = "Restaurante"
 
-    idRestaurante = Column(Integer, primary_key=True, autoincrement=True)
-    nome = Column(String(255), nullable=False)
+    idRestaurante : int = Column(Integer, primary_key=True, autoincrement=True)
+    nome : str = Column(String(255), nullable=False)
+    cnpj : str = Column(String(18), nullable=False)
+    telefone : str = Column(String(15), nullable=False)
+    email : str = Column(String(255), nullable=False)
+    cep : str =  Column(String(9), nullable=False)
+    status : bool =  Column(Boolean, nullable=False, default=True)
 
     # Relacionamentos
     usuarios = relationship("Funcionario", back_populates="restaurante", cascade="all, delete-orphan")
@@ -20,14 +25,17 @@ class Restaurante(Base):
     def __repr__(self):
         return f"<Restaurante(id={self.idRestaurante}, nome='{self.nome}')>"
 
-    # =====================================================================
-    # Operações com o Banco de Dados (CRUD / Acesso a Dados)
-    # =====================================================================
-
     @classmethod
-    def create(cls, db: Session, nome: str) -> "Restaurante":
+    def create(cls, db: Session, nome: str, cnpj: str, telefone: str, email: str, cep: str, status: bool) -> "Restaurante":
         """Cria e persiste um novo restaurante."""
-        restaurante = cls(nome=nome)
+        restaurante = cls(
+            nome = nome,
+            cnpj = cnpj,
+            telefone = telefone,
+            email = email,
+            cep = cep,
+            status = status
+        )
         db.add(restaurante)
         db.commit()
         db.refresh(restaurante)
@@ -43,16 +51,35 @@ class Restaurante(Base):
         """Retorna todos os restaurantes cadastrados."""
         return db.query(cls).all()
 
-    def update(self, db: Session, nome: str = None) -> "Restaurante":
+    def update(self, db: Session, nome: str = None, cnpj: str = None, telefone: str = None, email: str = None, cep: str = None, status: bool = None) -> "Restaurante":
         """Atualiza os dados do restaurante."""
         if nome is not None:
             self.nome = nome
+        if cnpj is not None:
+            self.cnpj = cnpj
+        if telefone is not None:
+            self.telefone = telefone
+        if email is not None:
+            self.email = email
+        if cep is not None:
+            self.cep = cep
+        if status is not None:
+            self.status = status
+
         db.commit()
         db.refresh(self)
         return self
-
-    def delete(self, db: Session) -> bool:
-        """Remove o restaurante do banco de dados."""
-        db.delete(self)
+    
+    def able(self, db: Session) -> "Restaurante":
+        """Atualiza os dados do restaurante."""
+        self.status = True
         db.commit()
-        return True
+        db.refresh(self)
+        return self
+        
+    def disable(self, db: Session) -> "Restaurante":
+        """Atualiza os dados do restaurante."""
+        self.status = False
+        db.commit()
+        db.refresh(self)
+        return self

@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
 from sqlalchemy.orm import relationship, Session
 import bcrypt
 from src.database.connection import Base
@@ -11,12 +11,13 @@ class Usuario(Base):
     """
     __tablename__ = "Usuarios"
 
-    idFuncionario = Column(Integer, primary_key=True, autoincrement=True)
-    idRestaurante = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    nome = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    senha = Column(String(255), nullable=False)
-    funcao = Column(String(50), nullable=False)
+    idFuncionario : int = Column(Integer, primary_key=True, autoincrement=True)
+    idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
+    nome : str = Column(String(255), nullable=False)
+    email : str = Column(String(255), unique=True, nullable=False)
+    senha : str = Column(String(255), nullable=False)
+    funcao : str = Column(String(50), nullable=False)
+    status : bool = Column(Boolean, nullable=False, default=True )
 
     restaurante = relationship("Restaurante", back_populates="usuarios")
     pedidos_atendidos = relationship("Pedido", back_populates="garcom", foreign_keys="Pedido.idGarcom")

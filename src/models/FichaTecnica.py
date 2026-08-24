@@ -24,13 +24,7 @@ class FichaTecnica(Base):
         return f"<FichaTecnica(id={self.idFichaTecnica}, idCardapio={self.idCardapio}, idEstoque={self.idEstoque}, qtd={self.quantidadeNecessaria})>"
 
     @classmethod
-    def create(
-        cls,
-        db: Session,
-        idCardapio: int,
-        idEstoque: int,
-        quantidadeNecessaria: float
-    ) -> "FichaTecnica":
+    def create(cls, db: Session, idCardapio: int, idEstoque: int, quantidadeNecessaria: float) -> "FichaTecnica":
         """Cria e persiste uma nova relação de ficha técnica."""
         ficha = cls(
             idCardapio=idCardapio,
@@ -48,12 +42,12 @@ class FichaTecnica(Base):
         return db.query(cls).filter(cls.idFichaTecnica == idFichaTecnica).first()
 
     @classmethod
-    def get_by_cardapio(cls, db: Session, idCardapio: int) -> List["FichaTecnica"]:
+    def get_by_menu(cls, db: Session, idCardapio: int) -> List["FichaTecnica"]:
         """Lista todos os insumos e proporções associados a um item do cardápio."""
         return db.query(cls).filter(cls.idCardapio == idCardapio).all()
 
     @classmethod
-    def get_by_cardapio_e_estoque(
+    def get_by_menu_storage(
         cls,
         db: Session,
         idCardapio: int,
