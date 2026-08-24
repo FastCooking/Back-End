@@ -1,7 +1,7 @@
 sqlalchemy
 fastapi
 pydantic
-cors
+uvicorn
 bcrypt
 psycopg[binary]
 python-dotenv
