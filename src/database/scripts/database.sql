@@ -9,23 +9,29 @@ USE "FASTCOOKING";
 
 CREATE TABLE "Restaurante" (
     idRestaurante SERIAL PRIMARY KEY,
-    nome VARCHAR(255) NOT NULL
+    nome VARCHAR(255) NOT NULL,
+    cpnj CHAR(18) NOT NULL UNIQUE,
+    telefone VARCHAR(15) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    cep CHAR(9) NOT NULL,
+    status BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE "Usuarios" (
     idFuncionario SERIAL PRIMARY KEY,
     idRestaurante INT NOT NULL REFERENCES "Restaurante"(idRestaurante) ON UPDATE CASCADE ON DELETE CASCADE,
     nome VARCHAR(255) NOT NULL,
+    cpf CHAR(14) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
     senha VARCHAR(255) NOT NULL,
     funcao VARCHAR(50) NOT NULL CHECK (funcao IN ('Garcom', 'Cozinheiro', 'Gerente', 'Adm'))
+    status BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE "Mesa" (
     idMesa SERIAL PRIMARY KEY,
     idRestaurante INT NOT NULL REFERENCES "Restaurante"(idRestaurante) ON UPDATE CASCADE ON DELETE CASCADE,
     numero INT NOT NULL,
-    capacidade INT NOT NULL DEFAULT 4,
     status VARCHAR(20) NOT NULL DEFAULT 'Disponivel' CHECK (status IN ('Disponivel', 'Indisponivel')),
     CONSTRAINT uq_restaurante_mesa UNIQUE (idRestaurante, numero)
 );
@@ -48,7 +54,7 @@ CREATE TABLE "Cardapio" (
     descricao TEXT,
     preco NUMERIC(10, 2) NOT NULL CHECK (preco >= 0),
     categoria VARCHAR(100) NOT NULL,
-    ativo BOOLEAN NOT NULL DEFAULT TRUE
+    status BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE "Estoque" (
