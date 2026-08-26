@@ -14,7 +14,7 @@ build/
 __pycache__/
 *.py[codz]
 *$py.class
-
+.pytest_cache
 # C extensions
 *.so
 
