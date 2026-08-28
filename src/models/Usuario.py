@@ -11,9 +11,10 @@ class Usuario(Base):
     """
     __tablename__ = "Usuarios"
 
-    idFuncionario : int = Column(Integer, primary_key=True, autoincrement=True)
+    idUsuario : int = Column(Integer, primary_key=True, autoincrement=True)
     idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
     nome : str = Column(String(255), nullable=False)
+    cpf : str = Column(String(14), nullable=False)
     email : str = Column(String(255), unique=True, nullable=False)
     senha : str = Column(String(255), nullable=False)
     funcao : str = Column(String(50), nullable=False)
@@ -27,25 +28,22 @@ class Usuario(Base):
         return f"<Funcionario(id={self.idFuncionario}, nome='{self.nome}', funcao='{self.funcao}')>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, nome: str, email: str, senha: str, funcao: str, gerar_hash: bool = True) -> "Usuario":
+    def create(cls, db: Session, idRestaurante: int, nome: str, cpf: str, email: str, senha: str, funcao: str) -> "Usuario":
         """Cria e persiste um novo funcionário/usuário."""
-        if gerar_hash:
-            salt = bcrypt.gensalt()
-            senha = bcrypt.hashpw(senha.encode("utf-8"), salt).decode("utf-8")
-
-        funcionario = cls(
+        usuario = cls(
             idRestaurante=idRestaurante,
             nome=nome,
+            cpf=cpf,
             email=email,
             senha=senha,
             funcao=funcao
         )
         
-        db.add(funcionario)
+        db.add(usuario)
         db.commit()
-        db.refresh(funcionario)
+        db.refresh(usuario)
         
-        return funcionario
+        return usuario
 
     @classmethod
     def get_by_id(cls, db: Session, idFuncionario: int) -> Optional["Usuario"]:
@@ -65,27 +63,46 @@ class Usuario(Base):
             query = query.filter(cls.funcao == funcao)
         return query.all()
 
-    def update(self, db: Session, nome: Optional[str] = None, email: Optional[str] = None, senha: Optional[str] = None, funcao: Optional[str] = None, gerar_hash: bool = True) -> "Usuario":
+    def update(self, db: Session, nome: Optional[str] = None,  cpf: Optional[str] = None, email: Optional[str] = None, senha: Optional[str] = None, funcao: Optional[str] = None) -> "Usuario":
         """Atualiza os dados de um funcionário."""
         if nome is not None:
             self.nome = nome
+        if cpf is not None:
+            self.cpf = cpf
         if email is not None:
             self.email = email
+        if senha is not None:
+            self.senha = senha
         if funcao is not None:
             self.funcao = funcao
-        if senha is not None:
-            if gerar_hash:
-                salt = bcrypt.gensalt()
-                self.senha = bcrypt.hashpw(senha.encode("utf-8"), salt).decode("utf-8")
-            else:
-                self.senha = senha
-
+            
         db.commit()
         db.refresh(self)
         return self
 
+    def disable(self, db: Session):
+        self.status = False
+        db.commit()
+        db.refresh(self)
+        return True
+
+    def able(self, db: Session):
+        self.status = False
+        db.commit()
+        db.refresh(self)
+        return True
+
     def delete(self, db: Session) -> bool:
         """Remove o funcionário do banco de dados."""
-        db.delete(self)
+        self.nome = "USUARIO REMOVIDO"
+        self.cpf = "000.000.000-00"
+        self.email = "USUARIO REMOVIDO"
+        self.senha = "" #substituir por senha padrao placeholder
+            
         db.commit()
-        return True
+        db.refresh(self)
+        return self
+
+def cript_pass(senha:str, salt: int):
+    salt = bcrypt.gensalt()
+    senha = bcrypt.hashpw(senha.encode("utf-8"), salt).decode("utf-8")

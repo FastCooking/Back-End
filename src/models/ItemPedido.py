@@ -5,19 +5,15 @@ from src.database.connection import Base
 
 
 class ItemPedido(Base):
-    """
-    Representa um item individual em uma comanda/pedido.
-    Contém os mapeamentos ORM e as operações de banco de dados.
-    """
     __tablename__ = "ItemPedido"
 
-    idItemPedido = Column(Integer, primary_key=True, autoincrement=True)
-    idPedido = Column(Integer, ForeignKey("Pedido.idPedido", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    idCardapio = Column(Integer, ForeignKey("Cardapio.idCardapio", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False)
-    quantidade = Column(Integer, nullable=False, default=1)
-    precoUnitario = Column(Numeric(10, 2), nullable=False)
-    status = Column(String(30), nullable=False, default="Pendente")
-    observacao = Column(Text, nullable=True)
+    idItemPedido : int = Column(Integer, primary_key=True, autoincrement=True)
+    idPedido : int = Column(Integer, ForeignKey("Pedido.idPedido", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
+    idCardapio : int = Column(Integer, ForeignKey("Cardapio.idCardapio", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False)
+    quantidade : int = Column(Integer, nullable=False, default=1)
+    precoUnitario : float = Column(Numeric(10, 2), nullable=False)
+    status : str = Column(String(30), nullable=False, default="Pendente")
+    observacao : str = Column(Text, nullable=True)
 
     # Relacionamentos
     pedido = relationship("Pedido", back_populates="itens")

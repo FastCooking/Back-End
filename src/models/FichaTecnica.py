@@ -7,10 +7,10 @@ from src.database.connection import Base
 class FichaTecnica(Base):
     __tablename__ = "FichaTecnica"
 
-    idFichaTecnica = Column(Integer, primary_key=True, autoincrement=True)
-    idCardapio = Column(Integer, ForeignKey("Cardapio.idCardapio", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    idEstoque = Column(Integer, ForeignKey("Estoque.idEstoque", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False)
-    quantidadeNecessaria = Column(Numeric(10, 3), nullable=False)
+    idFichaTecnica : int  = Column(Integer, primary_key=True, autoincrement=True)
+    idCardapio : int = Column(Integer, ForeignKey("Cardapio.idCardapio", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
+    idEstoque : int = Column(Integer, ForeignKey("Estoque.idEstoque", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False)
+    quantidadeNecessaria : float = Column(Numeric(10, 3), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("idCardapio", "idEstoque", name="uq_ficha_cardapio_estoque"),
@@ -47,12 +47,7 @@ class FichaTecnica(Base):
         return db.query(cls).filter(cls.idCardapio == idCardapio).all()
 
     @classmethod
-    def get_by_menu_storage(
-        cls,
-        db: Session,
-        idCardapio: int,
-        idEstoque: int
-    ) -> Optional["FichaTecnica"]:
+    def get_by_menu_storage(cls, db: Session, idCardapio: int, idEstoque: int) -> Optional["FichaTecnica"]:
         """Busca o vínculo específico entre um item do cardápio e um insumo."""
         return db.query(cls).filter(
             cls.idCardapio == idCardapio,

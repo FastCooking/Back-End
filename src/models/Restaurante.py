@@ -76,7 +76,7 @@ class Restaurante(Base):
         db.commit()
         db.refresh(self)
         return self
-        
+
     def disable(self, db: Session) -> "Restaurante":
         """Atualiza os dados do restaurante."""
         self.status = False

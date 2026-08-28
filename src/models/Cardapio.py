@@ -8,14 +8,14 @@ from src.database.connection import Base
 class Cardapio(Base):
     __tablename__ = "Cardapio"
 
-    idCardapio = Column(Integer, primary_key=True, autoincrement=True)
-    idRestaurante = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    nome = Column(String(150), nullable=False)
-    pathImage = Column(Text, nullable=True)
-    descricao = Column(Text, nullable=True)
-    preco = Column(Numeric(10, 2), nullable=False)
-    categoria = Column(String(100), nullable=False)
-    ativo = Column(Boolean, nullable=False, default=True)
+    idCardapio : int = Column(Integer, primary_key=True, autoincrement=True)
+    idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
+    nome : str = Column(String(150), nullable=False)
+    pathImage : str = Column(Text, nullable=True)
+    descricao : str = Column(Text, nullable=True)
+    preco : float = Column(Numeric(10, 2), nullable=False)
+    categoria : str = Column(String(100), nullable=False)
+    status : bool = Column(Boolean, nullable=False, default=True)
 
     # Relacionamentos
     restaurante = relationship("Restaurante", back_populates="cardapio")
@@ -26,7 +26,7 @@ class Cardapio(Base):
         return f"<ItemCardapio(id={self.idCardapio}, nome='{self.nome}', pathImage='{self.pathImage}', preco={self.preco}, ativo={self.ativo})>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, nome: str, preco: float, categoria: str, pathImage: str, descricao: Optional[str] = None, ativo: bool = True) -> "Cardapio":
+    def create(cls, db: Session, idRestaurante: int, nome: str, preco: float, categoria: str, pathImage: str, descricao: Optional[str] = None, status: bool = True) -> "Cardapio":
         """Cria um novo item de cardápio."""
         item = cls(
             idRestaurante=idRestaurante,
@@ -35,7 +35,7 @@ class Cardapio(Base):
             categoria=categoria,
             pathImage=pathImage,
             descricao=descricao,
-            ativo=ativo
+            status=status
         )
         db.add(item)
         db.commit()
@@ -57,7 +57,7 @@ class Cardapio(Base):
             query = query.filter(cls.categoria == categoria)
         return query.order_by(cls.categoria, cls.nome).all()
 
-    def update( self, db: Session, nome: Optional[str] = None, pathImage: Optional[str] = None, descricao: Optional[str] = None, preco: Optional[float] = None, categoria: Optional[str] = None, ativo: Optional[bool] = None) -> "Cardapio":
+    def update( self, db: Session, nome: Optional[str] = None, pathImage: Optional[str] = None, descricao: Optional[str] = None, preco: Optional[float] = None, categoria: Optional[str] = None, status: Optional[bool] = None) -> "Cardapio":
         """Atualiza os dados de um item do cardápio."""
         if nome is not None:
             self.nome = nome
@@ -69,8 +69,8 @@ class Cardapio(Base):
             self.preco = preco
         if categoria is not None:
             self.categoria = categoria
-        if ativo is not None:
-            self.ativo = ativo
+        if status is not None:
+            self.status = status
 
         db.commit()
         db.refresh(self)
@@ -78,7 +78,14 @@ class Cardapio(Base):
 
     def disable(self, db: Session) -> bool:
         """Desativa o item do cardápio do banco de dados."""
-        self.ativo = False
+        self.status = False
+        db.commit()
+        db.refresh(self)
+        return True
+
+    def able(self, db: Session) -> bool:
+        """Desativa o item do cardápio do banco de dados."""
+        self.status = True
         db.commit()
         db.refresh(self)
         return True

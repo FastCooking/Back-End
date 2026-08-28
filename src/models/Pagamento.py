@@ -6,17 +6,13 @@ from src.database.connection import Base
 
 
 class Pagamento(Base):
-    """
-    Representa o pagamento de um pedido/comanda.
-    Contém os mapeamentos ORM e as operações de banco de dados.
-    """
     __tablename__ = "Pagamento"
 
-    idPagamento = Column(Integer, primary_key=True, autoincrement=True)
-    idPedido = Column(Integer, ForeignKey("Pedido.idPedido", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False)
-    formaPagamento = Column(String(30), nullable=False)
-    valor = Column(Numeric(10, 2), nullable=False)
-    dataPagamento = Column(DateTime, nullable=False, server_default=func.now())
+    idPagamento : int = Column(Integer, primary_key=True, autoincrement=True)
+    idPedido : int = Column(Integer, ForeignKey("Pedido.idPedido", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False)
+    formaPagamento : str = Column(String(30), nullable=False)
+    valor : float = Column(Numeric(10, 2), nullable=False)
+    dataPagamento : datetime = Column(DateTime, nullable=False, server_default=func.now())
 
     # Relacionamentos
     pedido = relationship("Pedido", back_populates="pagamentos")
@@ -24,18 +20,8 @@ class Pagamento(Base):
     def __repr__(self):
         return f"<Pagamento(id={self.idPagamento}, pedido={self.idPedido}, forma='{self.formaPagamento}', valor={self.valor})>"
 
-    # =====================================================================
-    # Operações com o Banco de Dados (CRUD / Acesso a Dados)
-    # =====================================================================
-
     @classmethod
-    def create(
-        cls,
-        db: Session,
-        idPedido: int,
-        formaPagamento: str,
-        valor: float
-    ) -> "Pagamento":
+    def create(cls, db: Session, idPedido: int, formaPagamento: str, valor: float) -> "Pagamento":
         """Cria e persiste um novo pagamento."""
         pagamento = cls(
             idPedido=idPedido,
@@ -56,9 +42,3 @@ class Pagamento(Base):
     def get_by_pedido(cls, db: Session, idPedido: int) -> List["Pagamento"]:
         """Lista todos os pagamentos vinculados a um pedido."""
         return db.query(cls).filter(cls.idPedido == idPedido).order_by(cls.dataPagamento.asc()).all()
-
-    def delete(self, db: Session) -> bool:
-        """Remove o pagamento do banco de dados."""
-        db.delete(self)
-        db.commit()
-        return True

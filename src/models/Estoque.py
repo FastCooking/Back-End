@@ -6,18 +6,14 @@ from src.database.connection import Base
 
 
 class Estoque(Base):
-    """
-    Representa a tabela 'Estoque' (insumos e matérias-primas).
-    Contém os mapeamentos ORM e as operações de persistência/consulta no banco.
-    """
     __tablename__ = "Estoque"
 
-    idEstoque = Column(Integer, primary_key=True, autoincrement=True)
-    idRestaurante = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    nome = Column(String(150), nullable=False)
-    pathImage = Column(String(150), nullable=False)
-    quantidadeEstoque = Column(Numeric(10, 3), nullable=False, default=0.000)
-    quantidadeMinima = Column(Numeric(10, 3), nullable=False, default=0.000)
+    idEstoque : int = Column(Integer, primary_key=True, autoincrement=True)
+    idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
+    nome : str = Column(String(150), nullable=False)
+    pathImage : str = Column(String(150), nullable=False)
+    quantidadeEstoque : float = Column(Numeric(10, 3), nullable=False, default=0.000)
+    quantidadeMinima : float = Column(Numeric(10, 3), nullable=False, default=0.000)
 
     # Relacionamentos
     restaurante = relationship("Restaurante", back_populates="estoque")
@@ -27,15 +23,7 @@ class Estoque(Base):
         return f"<Insumo(id={self.idEstoque}, nome='{self.nome}', saldo={self.quantidadeEstoque} {self.unidadeMedida})>"
 
     @classmethod
-    def create(
-        cls,
-        db: Session,
-        idRestaurante: int,
-        nome: str,
-        unidadeMedida: str,
-        quantidadeEstoque: float = 0.0,
-        quantidadeMinima: float = 0.0
-    ) -> "Estoque":
+    def create(cls, db: Session, idRestaurante: int, nome: str, unidadeMedida: str, quantidadeEstoque: float = 0.0, quantidadeMinima: float = 0.0) -> "Estoque":
         """Cria e persiste um novo insumo de estoque."""
         insumo = cls(
             idRestaurante=idRestaurante,
@@ -55,19 +43,19 @@ class Estoque(Base):
         return db.query(cls).filter(cls.idEstoque == idEstoque).first()
 
     @classmethod
-    def get_all_by_restaurante(cls, db: Session, idRestaurante: int) -> List["Estoque"]:
+    def get_all_by_restaurant(cls, db: Session, idRestaurante: int) -> List["Estoque"]:
         """Lista todos os insumos de um restaurante."""
         return db.query(cls).filter(cls.idRestaurante == idRestaurante).order_by(cls.nome).all()
 
     @classmethod
-    def get_abaixo_do_minimo(cls, db: Session, idRestaurante: int) -> List["Estoque"]:
+    def get_less_than_min(cls, db: Session, idRestaurante: int) -> List["Estoque"]:
         """Lista insumos cujo saldo atual está igual ou abaixo do estoque mínimo."""
         return db.query(cls).filter(
             cls.idRestaurante == idRestaurante,
             cls.quantidadeEstoque <= cls.quantidadeMinima
         ).all()
 
-    def atualizar_saldo(self, db: Session, nova_quantidade: float) -> "Estoque":
+    def update_balance(self, db: Session, nova_quantidade: float) -> "Estoque":
         """Atualiza a quantidade em estoque e persiste a alteração."""
         self.quantidadeEstoque = nova_quantidade
         db.commit()
@@ -94,5 +82,3 @@ class Estoque(Base):
         db.delete(self)
         db.commit()
         return True
-
-Estoque = Estoque
