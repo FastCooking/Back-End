@@ -17,8 +17,8 @@ CREATE TABLE "Restaurante" (
     status BOOLEAN NOT NULL DEFAULT TRUE
 );
 
-CREATE TABLE "Usuarios" (
-    idFuncionario SERIAL PRIMARY KEY,
+CREATE TABLE "Usuario" (
+    idUsuario SERIAL PRIMARY KEY,
     idRestaurante INT NOT NULL REFERENCES "Restaurante"(idRestaurante) ON UPDATE CASCADE ON DELETE CASCADE,
     nome VARCHAR(255) NOT NULL,
     cpf CHAR(14) NOT NULL UNIQUE,
@@ -40,7 +40,7 @@ CREATE TABLE "Pedido" (
     idPedido SERIAL PRIMARY KEY,
     idRestaurante INT NOT NULL REFERENCES "Restaurante"(idRestaurante) ON UPDATE CASCADE ON DELETE CASCADE,
     idMesa INT NOT NULL REFERENCES "Mesa"(idMesa) ON UPDATE CASCADE ON DELETE RESTRICT,
-    idGarcom INT REFERENCES "Usuarios"(idFuncionario) ON UPDATE CASCADE ON DELETE SET NULL,
+    idGarcom INT REFERENCES "Usuario"(idUsuario) ON UPDATE CASCADE ON DELETE SET NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'Aberto' CHECK (status IN ('Aberto', 'Em preparo', 'Pronto', 'Entregue', 'Fechado', 'Cancelado')),
     dataAbertura TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     dataFechamento TIMESTAMP
