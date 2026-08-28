@@ -2,6 +2,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
+Base = declarative_base()
+
+
 class Database:
     def __init__(self, database_url: str):
         
@@ -14,7 +17,7 @@ class Database:
             autoflush=False,
             bind=self.engine
         )
-        self.Base = declarative_base()
+        self.Base = Base
 
     def get_db(self):
         db = self.SessionLocal()
