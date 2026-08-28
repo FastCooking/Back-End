@@ -1,8 +1,10 @@
 import os
-from dotenv import load_dotenv
-from database.connection import Database
-from fastapi import FastAPI
+
 import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI
+
+from database.connection import Database
 
 app = FastAPI()
 
@@ -32,7 +34,7 @@ def envTest(env: dict):
 
     for key, value in env.items():
         if value is None:
-            raise EnvironmentError(
+            raise OSError(
                 f"[ERRO] A variável de ambiente '{key}' não foi encontrada."
             )
 

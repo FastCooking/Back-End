@@ -1,6 +1,8 @@
-from typing import List, Optional
-from sqlalchemy import Column, Integer, String, Boolean
-from sqlalchemy.orm import relationship, Session
+from typing import Optional
+
+from sqlalchemy import Boolean, Column, Integer, String
+from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
 
 
@@ -47,11 +49,20 @@ class Restaurante(Base):
         return db.query(cls).filter(cls.idRestaurante == idRestaurante).first()
 
     @classmethod
-    def get_all(cls, db: Session) -> List["Restaurante"]:
+    def get_all(cls, db: Session) -> list["Restaurante"]:
         """Retorna todos os restaurantes cadastrados."""
         return db.query(cls).all()
 
-    def update(self, db: Session, nome: str = None, cnpj: str = None, telefone: str = None, email: str = None, cep: str = None, status: bool = None) -> "Restaurante":
+    def update(
+        self,
+        db: Session,
+        nome: str | None = None,
+        cnpj: str | None = None,
+        telefone: str | None = None,
+        email: str | None = None,
+        cep: str | None = None,
+        status: bool | None = None,
+    ) -> "Restaurante":
         """Atualiza os dados do restaurante."""
         if nome is not None:
             self.nome = nome

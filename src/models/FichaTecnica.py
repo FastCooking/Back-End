@@ -1,6 +1,8 @@
-from typing import List, Optional
-from sqlalchemy import Column, Integer, Numeric, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship, Session
+from typing import Optional
+
+from sqlalchemy import Column, ForeignKey, Integer, Numeric, UniqueConstraint
+from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
 
 
@@ -42,7 +44,7 @@ class FichaTecnica(Base):
         return db.query(cls).filter(cls.idFichaTecnica == idFichaTecnica).first()
 
     @classmethod
-    def get_by_menu(cls, db: Session, idCardapio: int) -> List["FichaTecnica"]:
+    def get_by_menu(cls, db: Session, idCardapio: int) -> list["FichaTecnica"]:
         """Lista todos os insumos e proporções associados a um item do cardápio."""
         return db.query(cls).filter(cls.idCardapio == idCardapio).all()
 

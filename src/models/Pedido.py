@@ -1,7 +1,9 @@
-from datetime import datetime
-from typing import List, Optional
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
-from sqlalchemy.orm import relationship, Session
+from datetime import datetime, timezone
+from typing import Optional
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
 
 
@@ -27,7 +29,7 @@ class Pedido(Base):
         return f"<Pedido(id={self.idPedido}, mesa={self.idMesa}, status='{self.status}')>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, idMesa: int, idGarcom: Optional[int] = None, status: str = "Aberto") -> "Pedido":
+    def create(cls, db: Session, idRestaurante: int, idMesa: int, idGarcom: int | None = None, status: str = "Aberto") -> "Pedido":
         """Cria e persiste um novo pedido/comanda."""
         pedido = cls(
             idRestaurante=idRestaurante,
@@ -54,26 +56,26 @@ class Pedido(Base):
         ).first()
 
     @classmethod
-    def get_all_by_restaurant(cls, db: Session, idRestaurante: int, status: Optional[str] = None) -> List["Pedido"]:
+    def get_all_by_restaurant(cls, db: Session, idRestaurante: int, status: str | None = None) -> list["Pedido"]:
         """Lista pedidos de um restaurante, com filtro opcional de status."""
         query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
         if status:
             query = query.filter(cls.status == status)
         return query.order_by(cls.dataAbertura.desc()).all()
 
-    def update_stats(self, db: Session, novo_status: str, dataFechamento: Optional[datetime] = None) -> "Pedido":
+    def update_stats(self, db: Session, novo_status: str, dataFechamento: datetime | None = None) -> "Pedido":
         """Atualiza o status do pedido e opcionalmente a data de fechamento."""
         self.status = novo_status
         if dataFechamento is not None:
             self.dataFechamento = dataFechamento
         elif novo_status in ("Fechado", "Cancelado") and not self.dataFechamento:
-            self.dataFechamento = datetime.utcnow()
+            self.dataFechamento = datetime.now(timezone.utc)
 
         db.commit()
         db.refresh(self)
         return self
 
-    def update(self, db: Session, idGarcom: Optional[int] = None, status: Optional[str] = None, dataFechamento: Optional[datetime] = None) -> "Pedido":
+    def update(self, db: Session, idGarcom: int | None = None, status: str | None = None, dataFechamento: datetime | None = None) -> "Pedido":
         """Atualiza os dados de um pedido."""
         if idGarcom is not None:
             self.idGarcom = idGarcom

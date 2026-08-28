@@ -1,0 +1,4 @@
+[lint]
+ignore = [
+    "N999", # Permite nomes de módulos/arquivos em PascalCase (ex: Cardapio.py, Usuario.py)
+]

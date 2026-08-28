@@ -1,6 +1,8 @@
-from typing import List, Optional
-from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship, Session
+from typing import Optional
+
+from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
 
 
@@ -51,7 +53,7 @@ class Mesa(Base):
         ).first()
 
     @classmethod
-    def get_all_by_restaurant(cls, db: Session, idRestaurante: int, status: Optional[str] = None) -> List["Mesa"]:
+    def get_all_by_restaurant(cls, db: Session, idRestaurante: int, status: str | None = None) -> list["Mesa"]:
         """Lista todas as mesas do restaurante, com filtro opcional por status ('Disponivel' / 'Indisponivel')."""
         query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
         if status:
@@ -65,7 +67,7 @@ class Mesa(Base):
         db.refresh(self)
         return self
 
-    def update(self, db: Session, numero: Optional[int] = None, status: Optional[str] = None) -> "Mesa":
+    def update(self, db: Session, numero: int | None = None, status: str | None = None) -> "Mesa":
         """Atualiza os dados cadastrais da mesa."""
         if numero is not None:
             self.numero = numero

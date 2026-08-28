@@ -1,7 +1,9 @@
-from typing import List, Optional
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
-from sqlalchemy.orm import relationship, Session
+from typing import Optional
+
 import bcrypt
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
 
 
@@ -55,14 +57,14 @@ class Usuario(Base):
         return db.query(cls).filter(cls.idUsuario != None, cls.email == email).first()
 
     @classmethod
-    def get_all_by_restaurante(cls, db: Session, idRestaurante: int, funcao: Optional[str] = None) -> List["Usuario"]:
+    def get_all_by_restaurante(cls, db: Session, idRestaurante: int, funcao: str | None = None) -> list["Usuario"]:
         """Lista funcionários de um restaurante, opcionalmente filtrados por função."""
         query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
         if funcao:
             query = query.filter(cls.funcao == funcao)
         return query.all()
 
-    def update(self, db: Session, nome: Optional[str] = None,  cpf: Optional[str] = None, email: Optional[str] = None, senha: Optional[str] = None, funcao: Optional[str] = None) -> "Usuario":
+    def update(self, db: Session, nome: str | None = None,  cpf: str | None = None, email: str | None = None, senha: str | None = None, funcao: str | None = None) -> "Usuario":
         """Atualiza os dados de um funcionário."""
         if nome is not None:
             self.nome = nome

@@ -1,6 +1,8 @@
-from typing import List, Optional
-from sqlalchemy import Column, Integer, String, Numeric, Text, ForeignKey
-from sqlalchemy.orm import relationship, Session
+from typing import Optional
+
+from sqlalchemy import Column, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
 
 
@@ -23,7 +25,7 @@ class ItemPedido(Base):
         return f"<ItemPedido(id={self.idItemPedido}, pedido={self.idPedido}, cardapio={self.idCardapio}, status='{self.status}')>"
 
     @classmethod
-    def create(cls, db: Session, idPedido: int, idCardapio: int, quantidade: int, precoUnitario: float, observacao: Optional[str] = None, status: str = "Pendente") -> "ItemPedido":
+    def create(cls, db: Session, idPedido: int, idCardapio: int, quantidade: int, precoUnitario: float, observacao: str | None = None, status: str = "Pendente") -> "ItemPedido":
         """Cria e persiste um novo item de pedido."""
         item = cls(
             idPedido=idPedido,
@@ -44,12 +46,12 @@ class ItemPedido(Base):
         return db.query(cls).filter(cls.idItemPedido == idItemPedido).first()
 
     @classmethod
-    def get_by_pedido(cls, db: Session, idPedido: int) -> List["ItemPedido"]:
+    def get_by_pedido(cls, db: Session, idPedido: int) -> list["ItemPedido"]:
         """Lista todos os itens de um pedido."""
         return db.query(cls).filter(cls.idPedido == idPedido).all()
 
     @classmethod
-    def get_pendents_kitchen(cls, db: Session, idRestaurante: int) -> List["ItemPedido"]:
+    def get_pendents_kitchen(cls, db: Session, idRestaurante: int) -> list["ItemPedido"]:
         """Lista itens com status 'Pendente' ou 'Em preparo' da cozinha de um restaurante."""
         from src.models.Pedido import Pedido
         return (
@@ -70,7 +72,7 @@ class ItemPedido(Base):
         db.refresh(self)
         return self
 
-    def update(self, db: Session, quantidade: Optional[int] = None, precoUnitario: Optional[float] = None, status: Optional[str] = None, observacao: Optional[str] = None,) -> "ItemPedido":
+    def update(self, db: Session, quantidade: int | None = None, precoUnitario: float | None = None, status: str | None = None, observacao: str | None = None,) -> "ItemPedido":
         """Atualiza os campos do item do pedido."""
         if quantidade is not None:
             self.quantidade = quantidade

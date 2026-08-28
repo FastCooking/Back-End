@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import declarative_base, sessionmaker
-
 
 Base = declarative_base()
 
@@ -34,6 +34,6 @@ class Database:
                 db_name = result.scalar()
                 print(f"[OK] Conectado ao banco '{db_name}'")
                 return True
-        except Exception as e:
+        except SQLAlchemyError as e:
             print(f"[ERRO] {e}")
             return False

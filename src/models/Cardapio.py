@@ -1,7 +1,8 @@
-from typing import List, Optional
-from decimal import Decimal
-from sqlalchemy import Column, Integer, String, Numeric, Boolean, Text, ForeignKey
-from sqlalchemy.orm import relationship, Session
+from typing import Optional
+
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
 
 
@@ -26,7 +27,7 @@ class Cardapio(Base):
         return f"<Cardapio(id={self.idCardapio}, nome='{self.nome}', pathImage='{self.pathImage}', preco={self.preco}, status={self.status})>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, nome: str, preco: float, categoria: str, pathImage: str, descricao: Optional[str] = None, status: bool = True) -> "Cardapio":
+    def create(cls, db: Session, idRestaurante: int, nome: str, preco: float, categoria: str, pathImage: str, descricao: str | None = None, status: bool = True) -> "Cardapio":
         """Cria um novo item de cardápio."""
         item = cls(
             idRestaurante=idRestaurante,
@@ -48,7 +49,7 @@ class Cardapio(Base):
         return db.query(cls).filter(cls.idCardapio == idCardapio).first()
 
     @classmethod
-    def get_all_by_restaurante(cls, db: Session, idRestaurante: int, apenas_ativos: bool = False, categoria: Optional[str] = None) -> List["Cardapio"]:
+    def get_all_by_restaurante(cls, db: Session, idRestaurante: int, apenas_ativos: bool = False, categoria: str | None = None) -> list["Cardapio"]:
         """Lista itens do cardápio de um restaurante com filtros opcionais."""
         query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
         if apenas_ativos:
@@ -57,7 +58,7 @@ class Cardapio(Base):
             query = query.filter(cls.categoria == categoria)
         return query.order_by(cls.categoria, cls.nome).all()
 
-    def update( self, db: Session, nome: Optional[str] = None, pathImage: Optional[str] = None, descricao: Optional[str] = None, preco: Optional[float] = None, categoria: Optional[str] = None, status: Optional[bool] = None) -> "Cardapio":
+    def update( self, db: Session, nome: str | None = None, pathImage: str | None = None, descricao: str | None = None, preco: float | None = None, categoria: str | None = None, status: bool | None = None) -> "Cardapio":
         """Atualiza os dados de um item do cardápio."""
         if nome is not None:
             self.nome = nome

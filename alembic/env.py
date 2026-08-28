@@ -1,12 +1,10 @@
 import os
 import sys
-from pathlib import Path
-from dotenv import load_dotenv
-
 from logging.config import fileConfig
+from pathlib import Path
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -33,7 +31,6 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Importa os models e o Base metadata
-import src.models
 from src.database.connection import Base
 
 target_metadata = Base.metadata

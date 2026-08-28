@@ -1,7 +1,9 @@
 from datetime import datetime
-from typing import List, Optional
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, func
-from sqlalchemy.orm import relationship, Session
+from typing import Optional
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
 
 
@@ -39,6 +41,6 @@ class Pagamento(Base):
         return db.query(cls).filter(cls.idPagamento == idPagamento).first()
 
     @classmethod
-    def get_by_pedido(cls, db: Session, idPedido: int) -> List["Pagamento"]:
+    def get_by_pedido(cls, db: Session, idPedido: int) -> list["Pagamento"]:
         """Lista todos os pagamentos vinculados a um pedido."""
         return db.query(cls).filter(cls.idPedido == idPedido).order_by(cls.dataPagamento.asc()).all()
