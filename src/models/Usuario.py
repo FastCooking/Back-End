@@ -14,7 +14,7 @@ class Usuario(Base):
     idUsuario : int = Column(Integer, primary_key=True, autoincrement=True)
     idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
     nome : str = Column(String(255), nullable=False)
-    cpf : str = Column(String(14), nullable=False)
+    cpf : str = Column(String(14), unique=True, nullable=False)
     email : str = Column(String(255), unique=True, nullable=False)
     senha : str = Column(String(255), nullable=False)
     funcao : str = Column(String(50), nullable=False)
@@ -22,10 +22,9 @@ class Usuario(Base):
 
     restaurante = relationship("Restaurante", back_populates="usuarios")
     pedidos_atendidos = relationship("Pedido", back_populates="garcom", foreign_keys="Pedido.idGarcom")
-    itens_preparados = relationship("ItemPedido", back_populates="cozinheiro", foreign_keys="ItemPedido.idCozinheiro")
 
     def __repr__(self):
-        return f"<Funcionario(id={self.idFuncionario}, nome='{self.nome}', funcao='{self.funcao}')>"
+        return f"<Usuario(id={self.idUsuario}, nome='{self.nome}', funcao='{self.funcao}')>"
 
     @classmethod
     def create(cls, db: Session, idRestaurante: int, nome: str, cpf: str, email: str, senha: str, funcao: str) -> "Usuario":
@@ -46,14 +45,14 @@ class Usuario(Base):
         return usuario
 
     @classmethod
-    def get_by_id(cls, db: Session, idFuncionario: int) -> Optional["Usuario"]:
+    def get_by_id(cls, db: Session, idUsuario: int) -> Optional["Usuario"]:
         """Busca funcionário por ID."""
-        return db.query(cls).filter(cls.idFuncionario == idFuncionario).first()
+        return db.query(cls).filter(cls.idUsuario == idUsuario).first()
 
     @classmethod
     def get_by_email(cls, db: Session, email: str) -> Optional["Usuario"]:
         """Busca funcionário por e-mail único."""
-        return db.query(cls).filter(cls.idFuncionario != None, cls.email == email).first()
+        return db.query(cls).filter(cls.idUsuario != None, cls.email == email).first()
 
     @classmethod
     def get_all_by_restaurante(cls, db: Session, idRestaurante: int, funcao: Optional[str] = None) -> List["Usuario"]:

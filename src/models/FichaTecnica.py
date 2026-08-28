@@ -17,8 +17,8 @@ class FichaTecnica(Base):
     )
 
     # Relacionamentos
-    cardapio = relationship("ItemCardapio", back_populates="fichas_tecnicas")
-    estoque = relationship("Insumo", back_populates="fichas_tecnicas")
+    cardapio = relationship("Cardapio", back_populates="fichas_tecnicas")
+    estoque = relationship("Estoque", back_populates="fichas_tecnicas")
 
     def __repr__(self):
         return f"<FichaTecnica(id={self.idFichaTecnica}, idCardapio={self.idCardapio}, idEstoque={self.idEstoque}, qtd={self.quantidadeNecessaria})>"

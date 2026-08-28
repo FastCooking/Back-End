@@ -11,7 +11,8 @@ class Estoque(Base):
     idEstoque : int = Column(Integer, primary_key=True, autoincrement=True)
     idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
     nome : str = Column(String(150), nullable=False)
-    pathImage : str = Column(String(150), nullable=False)
+    pathImage : Optional[str] = Column(String(150), nullable=True)
+    unidadeMedida : str = Column(String(20), nullable=False)
     quantidadeEstoque : float = Column(Numeric(10, 3), nullable=False, default=0.000)
     quantidadeMinima : float = Column(Numeric(10, 3), nullable=False, default=0.000)
 
@@ -20,7 +21,7 @@ class Estoque(Base):
     fichas_tecnicas = relationship("FichaTecnica", back_populates="estoque", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Insumo(id={self.idEstoque}, nome='{self.nome}', saldo={self.quantidadeEstoque} {self.unidadeMedida})>"
+        return f"<Estoque(id={self.idEstoque}, nome='{self.nome}', saldo={self.quantidadeEstoque} {self.unidadeMedida})>"
 
     @classmethod
     def create(cls, db: Session, idRestaurante: int, nome: str, unidadeMedida: str, quantidadeEstoque: float = 0.0, quantidadeMinima: float = 0.0) -> "Estoque":

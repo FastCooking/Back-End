@@ -19,7 +19,7 @@ class Pedido(Base):
     # Relacionamentos
     restaurante = relationship("Restaurante", back_populates="pedidos")
     mesa = relationship("Mesa", back_populates="pedidos")
-    garcom = relationship("Funcionario", back_populates="pedidos_atendidos", foreign_keys=[idGarcom])
+    garcom = relationship("Usuario", back_populates="pedidos_atendidos", foreign_keys=[idGarcom])
     itens = relationship("ItemPedido", back_populates="pedido", cascade="all, delete-orphan")
     pagamentos = relationship("Pagamento", back_populates="pedido", cascade="all, delete-orphan")
 

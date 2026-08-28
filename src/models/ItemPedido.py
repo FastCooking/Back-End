@@ -17,7 +17,7 @@ class ItemPedido(Base):
 
     # Relacionamentos
     pedido = relationship("Pedido", back_populates="itens")
-    cardapio = relationship("ItemCardapio", back_populates="itens_pedido")
+    cardapio = relationship("Cardapio", back_populates="itens_pedido")
 
     def __repr__(self):
         return f"<ItemPedido(id={self.idItemPedido}, pedido={self.idPedido}, cardapio={self.idCardapio}, status='{self.status}')>"

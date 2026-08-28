@@ -9,18 +9,18 @@ class Restaurante(Base):
 
     idRestaurante : int = Column(Integer, primary_key=True, autoincrement=True)
     nome : str = Column(String(255), nullable=False)
-    cnpj : str = Column(String(18), nullable=False)
+    cnpj : str = Column(String(18), unique=True, nullable=False)
     telefone : str = Column(String(15), nullable=False)
-    email : str = Column(String(255), nullable=False)
+    email : str = Column(String(255), unique=True, nullable=False)
     cep : str =  Column(String(9), nullable=False)
     status : bool =  Column(Boolean, nullable=False, default=True)
 
     # Relacionamentos
-    usuarios = relationship("Funcionario", back_populates="restaurante", cascade="all, delete-orphan")
+    usuarios = relationship("Usuario", back_populates="restaurante", cascade="all, delete-orphan")
     mesas = relationship("Mesa", back_populates="restaurante", cascade="all, delete-orphan")
     pedidos = relationship("Pedido", back_populates="restaurante", cascade="all, delete-orphan")
-    cardapio = relationship("ItemCardapio", back_populates="restaurante", cascade="all, delete-orphan")
-    estoque = relationship("Insumo", back_populates="restaurante", cascade="all, delete-orphan")
+    cardapio = relationship("Cardapio", back_populates="restaurante", cascade="all, delete-orphan")
+    estoque = relationship("Estoque", back_populates="restaurante", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Restaurante(id={self.idRestaurante}, nome='{self.nome}')>"

@@ -23,7 +23,7 @@ class Cardapio(Base):
     fichas_tecnicas = relationship("FichaTecnica", back_populates="cardapio", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<ItemCardapio(id={self.idCardapio}, nome='{self.nome}', pathImage='{self.pathImage}', preco={self.preco}, ativo={self.ativo})>"
+        return f"<Cardapio(id={self.idCardapio}, nome='{self.nome}', pathImage='{self.pathImage}', preco={self.preco}, status={self.status})>"
 
     @classmethod
     def create(cls, db: Session, idRestaurante: int, nome: str, preco: float, categoria: str, pathImage: str, descricao: Optional[str] = None, status: bool = True) -> "Cardapio":
@@ -52,7 +52,7 @@ class Cardapio(Base):
         """Lista itens do cardápio de um restaurante com filtros opcionais."""
         query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
         if apenas_ativos:
-            query = query.filter(cls.ativo == True)
+            query = query.filter(cls.status == True)
         if categoria:
             query = query.filter(cls.categoria == categoria)
         return query.order_by(cls.categoria, cls.nome).all()
