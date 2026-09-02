@@ -1,11 +1,8 @@
 from typing import Optional
-
 import bcrypt
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
 from sqlalchemy.orm import Session, relationship
-
 from src.database.connection import Base
-
 
 class Usuario(Base):
     """
@@ -63,6 +60,11 @@ class Usuario(Base):
         if funcao:
             query = query.filter(cls.funcao == funcao)
         return query.all()
+    
+    @classmethod
+    def get_by_cpf(cls, db: Session, cpf: str) -> Optional["Usuario"]:
+        """Busca funcionário por CPF."""
+        return db.query(cls).filter(cls.cpf == cpf).first()
 
     def update(self, db: Session, nome: str | None = None,  cpf: str | None = None, email: str | None = None, senha: str | None = None, funcao: str | None = None) -> "Usuario":
         """Atualiza os dados de um funcionário."""
@@ -76,22 +78,33 @@ class Usuario(Base):
             self.senha = senha
         if funcao is not None:
             self.funcao = funcao
-            
+
         db.commit()
         db.refresh(self)
         return self
 
-    def disable(self, db: Session):
+    def disable(self, db: Session) -> bool:
+        """Desativa o funcionário."""
         self.status = False
         db.commit()
         db.refresh(self)
         return True
 
-    def able(self, db: Session):
-        self.status = False
+    def able(self, db: Session) -> bool:
+        """Ativa o funcionário."""
+        self.status = True
         db.commit()
         db.refresh(self)
         return True
+
+    def autenticar(self, senha_plana: str) -> bool:
+        """Verifica se a senha fornecida confere com o hash armazenado."""
+        try:
+            return bcrypt.checkpw(
+                senha_plana.encode("utf-8"), self.senha.encode("utf-8")
+            )
+        except (ValueError, TypeError):
+            return False
 
     def delete(self, db: Session) -> bool:
         """Remove o funcionário do banco de dados."""
@@ -103,7 +116,3 @@ class Usuario(Base):
         db.commit()
         db.refresh(self)
         return self
-
-def cript_pass(senha:str, salt: int):
-    salt = bcrypt.gensalt()
-    senha = bcrypt.hashpw(senha.encode("utf-8"), salt).decode("utf-8")
