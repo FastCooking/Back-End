@@ -106,12 +106,13 @@ class Usuario(Base):
         except (ValueError, TypeError):
             return False
 
-    def delete(self, db: Session) -> bool:
-        """Remove o funcionário do banco de dados."""
-        self.nome = "USUARIO REMOVIDO"
-        self.cpf = "000.000.000-00"
-        self.email = "USUARIO REMOVIDO"
-        self.senha = "" #substituir por senha padrao placeholder
+    def delete(self, db: Session) -> "Usuario":
+        """Anonimiza e desativa o funcionário preservando a unicidade das restrições de banco."""
+        self.nome = f"USUARIO REMOVIDO {self.idUsuario}"
+        self.cpf = f"000.{self.idUsuario // 1000:03d}.{self.idUsuario % 1000:03d}-00"[:14]
+        self.email = f"removido_{self.idUsuario}@anonimizado.local"
+        self.senha = ""
+        self.status = False
             
         db.commit()
         db.refresh(self)
