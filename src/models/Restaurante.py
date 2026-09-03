@@ -1,7 +1,10 @@
 from typing import Optional
+
 from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
+
 
 class Restaurante(Base):
     __tablename__ = "Restaurante"

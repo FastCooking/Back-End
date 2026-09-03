@@ -1,8 +1,11 @@
 from typing import Optional
+
 import bcrypt
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
 from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
+
 
 class Usuario(Base):
     """
