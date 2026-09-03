@@ -1,3 +1,9 @@
+FastCooking_Postman_Collection.json
+agent/
+migrations/
+
+pyvenv.cfg
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -1,0 +1,5 @@
+[lint]
+ignore = [
+    "N999", # Permite nomes de módulos/arquivos em PascalCase
+    "B008", # Permite Depends e Query como valores padrão em rotas FastAPI
+]
