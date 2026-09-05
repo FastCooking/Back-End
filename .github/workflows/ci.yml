@@ -14,8 +14,50 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  test-dev:
+    name: Lint & Test (Dev)
+    
+    if: github.ref == 'refs/heads/develop' || github.base_ref == 'develop'
     runs-on: ubuntu-latest
+    
+    environment: Development
+
+    env:
+      DATABASE_URL: ${{ vars.DATABASE_URL }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      APP_ENV: ${{ vars.APP_ENV || 'development' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: |
+          pip install -r requirements.txt
+          pip install ruff pytest
+
+      - name: Rodar lint
+        run: ruff check .
+
+      - name: Rodar testes
+        run: pytest
+
+  test-prod:
+    name: Lint & Test (Prod)
+
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+
+    environment: Production
+
+    env:
+      DATABASE_URL: ${{ vars.DATABASE_URL }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      APP_ENV: ${{ vars.APP_ENV || 'production' }}
+
     steps:
       - uses: actions/checkout@v4
 
