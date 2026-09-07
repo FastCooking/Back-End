@@ -21,7 +21,7 @@ jobs:
     environment: Devlopment
 
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL || 'sqlite:///./fastcooking_ci_dev.db' }}
       SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
@@ -29,9 +29,9 @@ jobs:
       APP_ENV: ${{ vars.APP_ENV || 'development' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -44,7 +44,7 @@ jobs:
         run: ruff check .
 
       - name: Rodar testes
-        run: pytest
+        run: pytest -W ignore
 
   test-prod:
     name: Lint & Test (Prod)
@@ -53,7 +53,7 @@ jobs:
     environment: Production
 
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL || 'sqlite:///./fastcooking_ci_prod.db' }}
       SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
@@ -61,9 +61,9 @@ jobs:
       APP_ENV: ${{ vars.APP_ENV || 'production' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
