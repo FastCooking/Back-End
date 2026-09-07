@@ -5,12 +5,10 @@ on:
     branches:
       - main
       - develop
-      - dev
   pull_request:
     branches:
       - main
       - develop
-      - dev
 
 permissions:
   contents: read
@@ -20,7 +18,7 @@ jobs:
     name: Lint & Test (Dev)
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/dev' || github.base_ref == 'develop' || github.base_ref == 'dev' || github.head_ref == 'develop' || github.head_ref == 'dev'
     runs-on: ubuntu-latest
-    environment: Development
+    environment: Devlopment
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
@@ -60,37 +58,6 @@ jobs:
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
       SERVER_PORT: ${{ vars.SERVER_PORT || secrets.SERVER_PORT || '8000' }}
-      APP_ENV: ${{ vars.APP_ENV || 'production' }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Instalar dependências
-        run: |
-          pip install -r requirements.txt
-          pip install ruff pytest
-
-      - name: Rodar lint
-        run: ruff check .
-
-      - name: Rodar testes
-        run: pytest
-
-  test-prod:
-    name: Lint & Test (Prod)
-
-    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
-    runs-on: ubuntu-latest
-
-    environment: Production
-
-    env:
-      DATABASE_URL: ${{ vars.DATABASE_URL }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
       APP_ENV: ${{ vars.APP_ENV || 'production' }}
 
     steps:
