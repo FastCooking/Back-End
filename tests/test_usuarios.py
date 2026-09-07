@@ -28,7 +28,7 @@ DATABASE_URL = os.getenv(
 )
 
 
-def run_unit_and_integration_tests():
+def test_users():
     print("=" * 70)
     print("INICIANDO SUÍTE DE TESTES: CRUD DE USUÁRIOS & REGRAS DE NEGÓCIO")
     print("=" * 70)
@@ -234,4 +234,4 @@ def run_unit_and_integration_tests():
 
 
 if __name__ == "__main__":
-    run_unit_and_integration_tests()
+    test_users()

@@ -18,7 +18,7 @@ DATABASE_URL = os.getenv(
 )
 
 
-def run_acceptance_criteria_validation():
+def test_users():
     print("=" * 70)
     print("VALIDAÇÃO DOS CRITÉRIOS DE ACEITE DA TAREFA")
     print("=" * 70)
@@ -89,4 +89,4 @@ def run_acceptance_criteria_validation():
 
 
 if __name__ == "__main__":
-    run_acceptance_criteria_validation()
+    test_users()
