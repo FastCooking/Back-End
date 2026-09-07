@@ -25,7 +25,7 @@ DATABASE_URL = os.getenv(
 )
 
 
-def run_restaurante_tests():
+def test_restaurante_crud_e_regras_de_negocio():
     print("=" * 70)
     print("INICIANDO SUÍTE DE TESTES: CRUD DE RESTAURANTES & REGRAS DE NEGÓCIO")
     print("=" * 70)
@@ -165,7 +165,3 @@ def run_restaurante_tests():
     print("\n" + "=" * 70)
     print("TODOS OS TESTES DE RESTAURANTE PASSARAM COM 100% DE SUCESSO!")
     print("=" * 70)
-
-
-if __name__ == "__main__":
-    run_restaurante_tests()
