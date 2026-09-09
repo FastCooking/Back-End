@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Optional
 import bcrypt
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Session, relationship
 from src.database.connection import Base
 
@@ -18,6 +19,8 @@ class Usuario(Base):
     senha : str = Column(String(255), nullable=False)
     funcao : str = Column(String(50), nullable=False)
     status : bool = Column(Boolean, nullable=False, default=True )
+    tentativasFalhas: int = Column(Integer, nullable=False, default=0)
+    bloqueadoAte: "datetime | None" = Column(DateTime, nullable=True)
 
     restaurante = relationship("Restaurante", back_populates="usuarios")
     pedidos_atendidos = relationship("Pedido", back_populates="garcom", foreign_keys="Pedido.idGarcom")

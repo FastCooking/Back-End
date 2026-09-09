@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from src.core.security import exigir_funcao
+from src.models.Usuario import Usuario
 from src.database.connection import get_db
 from src.schemas.UsuarioSchema import (
     FuncaoUsuario,
@@ -13,7 +15,6 @@ from src.services.UsuarioService import UsuarioService
 
 router = APIRouter(prefix="/usuarios", tags=["Usuários"])
 
-
 @router.post(
     "",
     response_model=UsuarioResponse,
@@ -24,6 +25,7 @@ router = APIRouter(prefix="/usuarios", tags=["Usuários"])
 def criar_usuario(
     dados: UsuarioCreate,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> UsuarioResponse:
     service = UsuarioService(db)
     return service.create(dados)
