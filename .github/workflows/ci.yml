@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - develop
+      - "feature/**"
   pull_request:
     branches:
       - main
@@ -49,6 +50,14 @@ jobs:
 
       - name: Aplicar migrações
         run: alembic upgrade head
+
+      - name: Validar configuração do banco
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL não foi definida pelo workflow"
+            exit 1
+          fi
+          echo "DATABASE_URL definida para o banco PostgreSQL do CI"
 
       - name: Rodar testes
         run: pytest
