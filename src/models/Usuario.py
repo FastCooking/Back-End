@@ -1,9 +1,12 @@
 from datetime import datetime
 from typing import Optional
+
 import bcrypt
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Session, relationship
+
 from src.database.connection import Base
+
 
 class Usuario(Base):
     """

@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from src.core.security import exigir_funcao
-from src.models.Usuario import Usuario
 from src.database.connection import get_db
+from src.models.Usuario import Usuario
 from src.schemas.UsuarioSchema import (
     FuncaoUsuario,
     UsuarioCreate,

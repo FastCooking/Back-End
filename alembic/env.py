@@ -32,7 +32,6 @@ if config.config_file_name is not None:
 
 # Importa os models e o Base metadata
 from src.database.connection import Base
-import src.models
 
 target_metadata = Base.metadata
 
