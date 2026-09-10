@@ -13,8 +13,7 @@ from src.models.Usuario import Usuario
 
 client = TestClient(app)
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg://fastcooking:fastcooking@localhost:5432/FASTCOOKING",
+    "DATABASE_URL"
 )
 
 
