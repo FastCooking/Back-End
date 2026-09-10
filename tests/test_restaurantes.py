@@ -20,8 +20,7 @@ from src.schemas.RestauranteSchema import (
 from src.services.RestauranteService import RestauranteService
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg://fastcooking:fastcooking@localhost:5432/FASTCOOKING",
+    "DATABASE_URL"
 )
 
 
