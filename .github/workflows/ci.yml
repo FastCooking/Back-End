@@ -32,4 +32,6 @@ jobs:
         run: ruff check .
 
       - name: Rodar testes
+        env:
+          DATABASE_URL: sqlite:///./test.db
         run: pytest
