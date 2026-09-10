@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - develop
-      - "feature/**"
   pull_request:
     branches:
       - main
@@ -15,24 +14,20 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  test-dev:
+    name: Lint & Test (Dev)
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/dev' || github.base_ref == 'develop' || github.base_ref == 'dev' || github.head_ref == 'develop' || github.head_ref == 'dev'
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: fastcooking
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d fastcooking"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    environment: Devlopment
+
     env:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/fastcooking
+      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
+      BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
+      SERVER_PORT: ${{ vars.SERVER_PORT || secrets.SERVER_PORT || '8000' }}
+      APP_ENV: ${{ vars.APP_ENV || 'development' }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -48,16 +43,37 @@ jobs:
       - name: Rodar lint
         run: ruff check .
 
-      - name: Aplicar migrações
-        run: alembic upgrade head
+      - name: Rodar testes
+        run: pytest
 
-      - name: Validar configuração do banco
+  test-prod:
+    name: Lint & Test (Prod)
+    if: (github.ref == 'refs/heads/main' || github.base_ref == 'main') && !(github.head_ref == 'develop' || github.head_ref == 'dev')
+    runs-on: ubuntu-latest
+    environment: Production
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
+      BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
+      SERVER_PORT: ${{ vars.SERVER_PORT || secrets.SERVER_PORT || '8000' }}
+      APP_ENV: ${{ vars.APP_ENV || 'production' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
         run: |
-          if [ -z "$DATABASE_URL" ]; then
-            echo "DATABASE_URL não foi definida pelo workflow"
-            exit 1
-          fi
-          echo "DATABASE_URL definida para o banco PostgreSQL do CI"
+          pip install -r requirements.txt
+          pip install ruff pytest
+
+      - name: Rodar lint
+        run: ruff check .
 
       - name: Rodar testes
         run: pytest
