@@ -43,9 +43,6 @@ jobs:
       - name: Rodar lint
         run: ruff check .
 
-      - name: Rodar migrações
-        run: alembic upgrade head
-
       - name: Rodar testes
         run: pytest
 
@@ -77,9 +74,6 @@ jobs:
 
       - name: Rodar lint
         run: ruff check .
-
-      - name: Rodar migrações
-        run: alembic upgrade head
 
       - name: Rodar testes
         run: pytest
