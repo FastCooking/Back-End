@@ -8,3 +8,4 @@ python-dotenv==1.0.1
 alembic==1.13.1
 uliweb-alembic
 ruff
+psycopg2>=2.9.0

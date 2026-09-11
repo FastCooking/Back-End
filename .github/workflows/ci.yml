@@ -43,9 +43,6 @@ jobs:
       - name: Rodar lint
         run: ruff check .
 
-      - name: Rodar migrações
-        run: alembic upgrade head
-
       - name: Rodar testes
         run: python -m pytest
 
@@ -73,13 +70,16 @@ jobs:
       - name: Instalar dependências
         run: |
           pip install -r requirements.txt
+          pip install -e .
           pip install ruff pytest
 
       - name: Rodar lint
         run: ruff check .
 
-      - name: Rodar migrações
-        run: alembic upgrade head
-
       - name: Rodar testes
         run: python -m pytest
+
+      - name: Resetar banco de dados
+        run: |
+          alembic downgrade base || true
+          alembic upgrade head
