@@ -5,17 +5,16 @@ import time
 # Adiciona o diretório raiz ao sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from src.app import app
 from src.schemas.RestauranteSchema import (
     RestauranteCreate,
     validar_cep,
     validar_cnpj,
     validar_telefone,
 )
-
-from fastapi.testclient import TestClient
-from src.app import app
 
 client = TestClient(app)
 
