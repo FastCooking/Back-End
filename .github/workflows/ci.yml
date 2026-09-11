@@ -47,7 +47,7 @@ jobs:
         run: alembic upgrade head
 
       - name: Rodar testes
-        run: pytest
+        run: python -m pytest
 
   test-prod:
     name: Lint & Test (Prod)
@@ -82,4 +82,4 @@ jobs:
         run: alembic upgrade head
 
       - name: Rodar testes
-        run: pytest
+        run: python -m pytest
