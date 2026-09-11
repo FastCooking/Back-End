@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 
 # Adiciona o diretório raiz do projeto ao sys.path para garantir importações com 'src.'
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -16,6 +17,7 @@ if str(ROOT_DIR) not in sys.path:
 from src.controllers.AuthController import router as auth_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
+from src.controllers.CardapioController import router as cardapio_router
 from src.database.connection import test_connection
 
 app = FastAPI(
@@ -33,13 +35,14 @@ async def validation_exception_handler(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
             "message": "Erro de validação: campos obrigatórios ausentes ou inválidos.",
-            "detail": exc.errors(),
+            "detail": jsonable_encoder(exc.errors()),
         },
     )
 
 app.include_router(usuario_router)
 app.include_router(restaurante_router)
 app.include_router(auth_router)
+app.include_router(cardapio_router)
 
 
 @app.get("/", tags=["Health Check"])
