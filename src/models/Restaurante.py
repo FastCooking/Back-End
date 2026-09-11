@@ -1,3 +1,4 @@
+import secrets
 from typing import Optional
 
 from sqlalchemy import Boolean, Column, Integer, String
@@ -49,20 +50,21 @@ class Restaurante(Base):
         return db.query(cls).filter(cls.idRestaurante == idRestaurante).first()
 
     @classmethod
+    def get_by_cnpj(cls, db: Session, cnpj: str) -> Optional["Restaurante"]:
+        """Busca um restaurante pelo CNPJ."""
+        return db.query(cls).filter(cls.cnpj == cnpj).first()
+
+    @classmethod
+    def get_by_email(cls, db: Session, email: str) -> Optional["Restaurante"]:
+        """Busca um restaurante pelo e-mail."""
+        return db.query(cls).filter(cls.email == email).first()
+
+    @classmethod
     def get_all(cls, db: Session) -> list["Restaurante"]:
         """Retorna todos os restaurantes cadastrados."""
         return db.query(cls).all()
 
-    def update(
-        self,
-        db: Session,
-        nome: str | None = None,
-        cnpj: str | None = None,
-        telefone: str | None = None,
-        email: str | None = None,
-        cep: str | None = None,
-        status: bool | None = None,
-    ) -> "Restaurante":
+    def update(self, db: Session, nome: str | None = None, cnpj: str | None = None, telefone: str | None = None, email: str | None = None, cep: str | None = None, status: bool | None = None,) -> "Restaurante":
         """Atualiza os dados do restaurante."""
         if nome is not None:
             self.nome = nome
@@ -82,15 +84,29 @@ class Restaurante(Base):
         return self
     
     def able(self, db: Session) -> "Restaurante":
-        """Atualiza os dados do restaurante."""
+        """Ativa o restaurante."""
         self.status = True
         db.commit()
         db.refresh(self)
         return self
 
     def disable(self, db: Session) -> "Restaurante":
-        """Atualiza os dados do restaurante."""
+        """Desativa o restaurante."""
         self.status = False
+        db.commit()
+        db.refresh(self)
+        return self
+
+    def delete(self, db: Session) -> "Restaurante":
+        """Anonimiza e desativa o restaurante preservando a unicidade das restrições de banco."""
+        codigo = secrets.token_hex(5)
+        self.nome = f"RESTAURANTE REMOVIDO {self.idRestaurante}"
+        self.cnpj = f"00.000.000/{codigo[:4]}-{codigo[4:6]}"
+        self.email = f"removido_{codigo}@anonimizado.local"
+        self.telefone = "(00) 00000-0000"
+        self.cep = "00000-000"
+        self.status = False
+
         db.commit()
         db.refresh(self)
         return self

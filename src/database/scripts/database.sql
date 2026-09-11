@@ -24,7 +24,7 @@ CREATE TABLE "Usuario" (
     cpf CHAR(14) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
     senha VARCHAR(255) NOT NULL,
-    funcao VARCHAR(50) NOT NULL CHECK (funcao IN ('Garcom', 'Cozinheiro', 'Gerente', 'Adm'))
+    funcao VARCHAR(50) NOT NULL CHECK (funcao IN ('Garcom', 'Cozinheiro', 'Gerente', 'Adm')),
     status BOOLEAN NOT NULL DEFAULT TRUE
 );
 

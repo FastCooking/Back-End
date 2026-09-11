@@ -1,9 +1,25 @@
 import os
+from collections.abc import Generator
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL não encontrada.")
+
+if make_url(DATABASE_URL).drivername == "postgresql":
+    DATABASE_URL = make_url(DATABASE_URL).set(drivername="postgresql+psycopg").render_as_string(
+        hide_password=False
+    )
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fastcooking.db")
 engine = create_engine(DATABASE_URL)
@@ -21,63 +37,23 @@ from src.models.Restaurante import Restaurante  # noqa: F401
 from src.models.Usuario import Usuario  # noqa: F401
 
 
-class Database:
-    def __init__(self, database_url: str | None = None):
-        url = database_url or DATABASE_URL
-
-        if not url:
-            raise ValueError("DATABASE_URL não encontrada.")
-
-        self.engine = create_engine(url)
-        self.SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=self.engine
-        )
-        self.Base = Base
-
-    def get_db(self):
-        db = self.SessionLocal()
-
-        try:
-            yield db
-        finally:
-            db.close()
-
-    def test_connection(self):
-        try:
-            with self.engine.connect() as connection:
-                result = connection.execute(text("SELECT current_database();"))
-                db_name = result.scalar()
-                print(f"[OK] Conectado ao banco '{db_name}'")
-                return True
-        except SQLAlchemyError as e:
-            print(f"[ERRO] {e}")
-            return False
-
-
-def init_db():
-    Base.metadata.create_all(bind=engine)
-
-    with SessionLocal() as db:
-        from src.models.Restaurante import Restaurante
-
-        restaurante = db.query(Restaurante).first()
-        if restaurante is None:
-            db.add(
-                Restaurante(
-                    nome="Restaurante Padrão",
-                    cnpj="00.000.000/0001-00",
-                    telefone="00000000000",
-                    email="padrao@restaurante.local",
-                    cep="00000-000",
-                    status=True,
-                )
-            )
-            db.commit()
-
-
-def get_db():
+def get_db() -> Generator[Session, None, None]:
+    """Dependência oficial do FastAPI para injeção de sessão de banco de dados."""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+def test_connection() -> bool:
+    """Testa se a conexão com o banco de dados está ativa."""
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(text("SELECT current_database();"))
+            db_name = result.scalar()
+            print(f"[OK] Conectado ao banco '{db_name}'")
+            return True
+    except SQLAlchemyError as e:
+        print(f"[ERRO] {e}")
+        return False
