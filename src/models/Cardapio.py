@@ -27,8 +27,18 @@ class Cardapio(Base):
         return f"<Cardapio(id={self.idCardapio}, nome='{self.nome}', pathImage='{self.pathImage}', preco={self.preco}, status={self.status})>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, nome: str, preco: float, categoria: str, pathImage: str, descricao: str | None = None, status: bool = True) -> "Cardapio":
-        """Cria um novo item de cardápio."""
+    def create(
+        cls,
+        db: Session,
+        idRestaurante: int,
+        nome: str,
+        preco: float,
+        categoria: str,
+        pathImage: str | None = None,
+        descricao: str | None = None,
+        status: bool = True
+    ) -> "Cardapio":
+
         item = cls(
             idRestaurante=idRestaurante,
             nome=nome,
@@ -38,9 +48,11 @@ class Cardapio(Base):
             descricao=descricao,
             status=status
         )
+
         db.add(item)
         db.commit()
         db.refresh(item)
+
         return item
 
     @classmethod
@@ -63,16 +75,15 @@ class Cardapio(Base):
         if nome is not None:
             self.nome = nome
         if pathImage is not None:
-            self.descricao = descricao
-        if descricao is not None:
             self.pathImage = pathImage
+        if descricao is not None:
+            self.descricao = descricao
         if preco is not None:
             self.preco = preco
         if categoria is not None:
             self.categoria = categoria
         if status is not None:
             self.status = status
-
         db.commit()
         db.refresh(self)
         return self
