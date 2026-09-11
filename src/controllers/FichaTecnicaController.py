@@ -33,7 +33,7 @@ def criar_ficha_tecnica(payload: FichaTecnicaCreateDTO, db: Session = Depends(ge
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc
 
 
@@ -61,7 +61,7 @@ def atualizar_ficha_tecnica_por_cardapio(
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc
 
 
@@ -75,7 +75,7 @@ def buscar_ficha_tecnica(idFichaTecnica: int, db: Session = Depends(get_db)):
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc
 
 
@@ -89,7 +89,7 @@ def listar_fichas_por_cardapio(idCardapio: int, db: Session = Depends(get_db)):
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc
 
 
@@ -106,5 +106,5 @@ def buscar_ficha_tecnica_completa(idCardapio: int, db: Session = Depends(get_db)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc

@@ -2,12 +2,11 @@ import os
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 os.environ["DATABASE_URL"] = "sqlite://"
 
-from src.database.connection import Base, SessionLocal, engine, get_db
+from src.database.connection import Base, SessionLocal
 
 engine = create_engine(
     "sqlite://",

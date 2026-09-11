@@ -37,7 +37,7 @@ def criar_cardapio(payload: dict, db: Session = Depends(get_db)):
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc
 
 

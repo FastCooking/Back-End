@@ -18,7 +18,7 @@ def criar_insumo(payload: EstoqueCreateDTO, db: Session = Depends(get_db)):
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc
 
 
@@ -32,7 +32,7 @@ def buscar_insumo_por_id(idEstoque: int, db: Session = Depends(get_db)):
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc
 
 
@@ -46,5 +46,5 @@ def listar_insumos(db: Session = Depends(get_db)):
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro interno: {str(exc)}",
+            detail=f"Erro interno: {exc!s}",
         ) from exc

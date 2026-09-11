@@ -1,4 +1,5 @@
 [lint]
 ignore = [
     "N999", # Permite nomes de módulos/arquivos em PascalCase (ex: Cardapio.py, Usuario.py)
+    "B008", # Depends(...) em defaults é o padrão de injeção de dependência do FastAPI
 ]
