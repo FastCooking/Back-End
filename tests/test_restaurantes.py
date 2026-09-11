@@ -179,11 +179,14 @@ def test_restaurant():
     resp_delete = client.delete(f"/restaurantes/{id_criado}")
     assert resp_delete.status_code == 204
 
-    # Verifica que o restaurante foi desativado (soft delete)
+    # Verifica que o restaurante foi desativado e anonimizado (soft delete)
     resp_pos_delete = client.get(f"/restaurantes/{id_criado}")
     assert resp_pos_delete.status_code == 200
-    assert resp_pos_delete.json()["status"] is False
-    print("   [PASS] DELETE /restaurantes/{id}: Restaurante desativado (soft delete) confirmado.")
+    dados_anonimizado = resp_pos_delete.json()
+    assert dados_anonimizado["nome"].startswith("RESTAURANTE REMOVIDO")
+    assert dados_anonimizado["email"].startswith("removido_")
+    assert dados_anonimizado["status"] is False
+    print("   [PASS] DELETE /restaurantes/{id}: Restaurante anonimizado e desativado com sucesso.")
 
     # =================================================================
     print("\n" + "=" * 70)
