@@ -12,3 +12,5 @@ email-validator
 httpx
 python-jose[cryptography]
 httpx
+psycopg[binary]==3.3.5
+sqlalchemy[postgresql_psycopg]==2.0.30
