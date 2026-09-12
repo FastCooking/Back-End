@@ -15,6 +15,20 @@ if not DATABASE_URL:
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fastcooking.db")
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Importa os modelos para registrar as tabelas no metadata do SQLAlchemy.
+from src.models.Cardapio import Cardapio  # noqa: F401
+from src.models.Estoque import Estoque  # noqa: F401
+from src.models.FichaTecnica import FichaTecnica  # noqa: F401
+from src.models.ItemPedido import ItemPedido  # noqa: F401
+from src.models.Mesa import Mesa  # noqa: F401
+from src.models.Pagamento import Pagamento  # noqa: F401
+from src.models.Pedido import Pedido  # noqa: F401
+from src.models.Restaurante import Restaurante  # noqa: F401
+from src.models.Usuario import Usuario  # noqa: F401
 
 
 def get_db() -> Generator[Session, None, None]:

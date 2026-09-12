@@ -11,3 +11,4 @@ ruff
 email-validator
 httpx
 python-jose[cryptography]
+psycopg2-binary==2.9.9
