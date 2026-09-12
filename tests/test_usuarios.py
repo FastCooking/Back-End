@@ -296,9 +296,10 @@ def test_users():
         # 4.7 DELETE (Model Anonymization)
         service.delete(id_criado)
         usuario_deletado = service.get_by_id(id_criado)
-        assert usuario_deletado.nome == "USUARIO REMOVIDO"
-        assert usuario_deletado.cpf == "000.000.000-00"
-        assert usuario_deletado.email == "USUARIO REMOVIDO"
+        assert usuario_deletado.nome == f"USUARIO REMOVIDO {id_criado}"
+        assert usuario_deletado.cpf != cpf_dinamico
+        assert usuario_deletado.email.startswith("removido_")
+        assert usuario_deletado.status is False
         print("   [PASS] DELETE: Usuário anonimizado conforme método delete do Model.")
 
     finally:

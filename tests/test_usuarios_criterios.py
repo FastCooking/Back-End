@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from fastapi.testclient import TestClient
 
 from src.app import app
+from src.core.security import criar_token
 from src.database.connection import SessionLocal
 from src.models.Usuario import Usuario
 
@@ -26,6 +27,20 @@ def run_acceptance_criteria_validation():
     login_teste = f"garcom_{ts}@fastcooking.com"
     senha_teste = "SenhaSegura@2026"
 
+    auth_session = SessionLocal()
+    try:
+        gerente = (
+            auth_session.query(Usuario)
+            .filter(Usuario.funcao == "Gerente", Usuario.status.is_(True))
+            .first()
+        )
+        assert gerente is not None, "É necessário um gerente ativo para testar o endpoint protegido"
+        headers = {
+            "Authorization": f"Bearer {criar_token(gerente.idUsuario, gerente.funcao)}"
+        }
+    finally:
+        auth_session.close()
+
     # -------------------------------------------------------------
     # 1. A API cria um funcionário com nome, login, senha e perfil
     # -------------------------------------------------------------
@@ -35,7 +50,7 @@ def run_acceptance_criteria_validation():
         "senha": senha_teste,
         "perfil": "Garcom",
     }
-    response = client.post("/usuarios", json=payload_criacao)
+    response = client.post("/usuarios", json=payload_criacao, headers=headers)
     assert response.status_code == 201, f"Esperava 201 Created, recebeu {response.status_code}: {response.text}"
     dados_retorno = response.json()
 
@@ -63,7 +78,9 @@ def run_acceptance_criteria_validation():
     # -------------------------------------------------------------
     # 3. A API valida que o login não pode ser duplicado
     # -------------------------------------------------------------
-    response_duplicado = client.post("/usuarios", json=payload_criacao)
+    response_duplicado = client.post(
+        "/usuarios", json=payload_criacao, headers=headers
+    )
     assert response_duplicado.status_code == 409, f"Esperava 409 Conflict, recebeu {response_duplicado.status_code}"
     print("[PASS] 3. A API valida e impede logins duplicados (409 Conflict).")
 
@@ -77,7 +94,7 @@ def run_acceptance_criteria_validation():
         {"login": "semperfil@email.com", "nome": "Sem Perfil", "senha": "123456senha"}, # Falta perfil/funcao
     ]
     for p in payloads_invalidos:
-        resp_invalido = client.post("/usuarios", json=p)
+        resp_invalido = client.post("/usuarios", json=p, headers=headers)
         assert resp_invalido.status_code == 400, f"Esperava 400 Bad Request para payload {p}, recebeu {resp_invalido.status_code}"
 
     print("[PASS] 4. A API retorna erro 400 para campos obrigatórios ausentes.")
