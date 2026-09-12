@@ -125,17 +125,16 @@ def _obter_headers_gerente() -> dict[str, str]:
 
 def test_users():
     print("=" * 70)
-    print("SUÍTE DE TESTES UNIFICADA: USUÁRIOS (Schemas + API CRUD + Critérios)")
+    print("INICIANDO SUÍTE DE TESTES: CRUD DE USUÁRIOS & REGRAS DE NEGÓCIO")
     print("=" * 70)
 
-    ts = int(time.time() * 1000)
-
-    # -----------------------------------------------------------------
-    # 1. TESTES UNITÁRIOS DE VALIDAÇÃO DE CPF
-    # -----------------------------------------------------------------
-    print("\n[1/9] Testes Unitários de Validação de CPF:")
-    cpf_valido_1 = "52998224725"
+    # -------------------------------------------------------------
+    # 1. TESTES DE VALIDAÇÃO DE CPF
+    # -------------------------------------------------------------
+    print("\n[1/6] Testes Unitários de Validação de CPF:")
+    cpf_valido_1 = "52998224725"  # CPF válido gerado algoritmicamente
     cpf_valido_2 = "529.982.247-25"
+    
     assert validar_cpf(cpf_valido_1) == "529.982.247-25", "Falha ao validar CPF sem máscara"
     assert validar_cpf(cpf_valido_2) == "529.982.247-25", "Falha ao validar CPF com máscara"
     print("   [PASS] CPFs válidos formatados corretamente.")
@@ -164,8 +163,8 @@ def test_users():
     print("\n[2/6] Testes de Criptografia e Verificação de Senha:")
     # -----------------------------------------------------------------
     # 2. TESTES DE HASH E VERIFICAÇÃO DE SENHA (BCRYPT)
-    # -----------------------------------------------------------------
-    print("\n[2/9] Testes de Criptografia e Verificação de Senha:")
+    # -------------------------------------------------------------
+    print("\n[2/6] Testes de Criptografia e Verificação de Senha:")
     senha_original = "MinhaSenha@123"
     senha_hasheada = hash_senha(senha_original)
 
@@ -183,10 +182,10 @@ def test_users():
     # Validação de Função permitida
     # -----------------------------------------------------------------
     # 3. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
-    # -----------------------------------------------------------------
-    print("\n[3/9] Testes de Validação de Schemas Pydantic:")
-
-    # Função/Cargo não permitido
+    # -------------------------------------------------------------
+    print("\n[3/6] Testes de Validação de Schemas Pydantic:")
+    
+    # Validação de Função permitida
     try:
         UsuarioCreate(
             idRestaurante=1,
@@ -414,75 +413,74 @@ def test_users():
         assert resp_inv.status_code == 400, (
             f"Esperava 400 para payload {p}, recebeu {resp_inv.status_code}"
         )
-    print("   [PASS] Todos os payloads incompletos retornaram 400 Bad Request.")
+        usuario_criado = service.create(dados_usuario)
+        id_criado = usuario_criado.idUsuario
 
-    # -----------------------------------------------------------------
-    # 8. CRUD COMPLETO VIA API (GET, LIST, PUT, PATCH, DELETE)
-    # -----------------------------------------------------------------
-    print("\n[8/9] CRUD Completo via API (GET / LIST / PUT / PATCH status / DELETE):")
+        assert id_criado is not None, "ID não foi gerado"
+        assert usuario_criado.nome == "João Garçom"
+        assert usuario_criado.cpf == cpf_dinamico
+        assert usuario_criado.funcao == "Garcom"
+        assert verificar_senha("SenhaForte@2026", usuario_criado.senha) is True
+        print(f"   [PASS] CREATE: Usuário ID {id_criado} criado com sucesso.")
 
-    # GET BY ID
-    resp_get = client.get(f"/usuarios/{id_criado}")
-    assert resp_get.status_code == 200
-    assert resp_get.json()["idUsuario"] == id_criado
-    print("   [PASS] GET /usuarios/{id}: Usuário recuperado com sucesso.")
+        # 4.2 DUPLICATE CHECKS
+        try:
+            service.create(dados_usuario)  # Tenta recriar com mesmo email e cpf
+            raise AssertionError("Permitiu cadastrar usuário com email/CPF duplicado!")
+        except HTTPException as e:
+            assert e.status_code == 409, f"Esperava status 409, obteve {e.status_code}"
+            print("   [PASS] Validação de duplicidade (409 Conflict) confirmada.")
 
-    # LIST com filtros
-    resp_list_rest = client.get(f"/usuarios?idRestaurante={id_restaurante}")
-    assert resp_list_rest.status_code == 200
-    assert any(u["idUsuario"] == id_criado for u in resp_list_rest.json())
+        # 4.3 GET BY ID
+        usuario_lido = service.get_by_id(id_criado)
+        assert usuario_lido.idUsuario == id_criado
+        response_model = UsuarioResponse.model_validate(usuario_lido)
+        assert hasattr(response_model, "senha") is False, "A resposta pública NÃO deve conter a senha"
+        print("   [PASS] GET BY ID: Usuário recuperado e serializado sem exposição de senha.")
 
-    resp_list_funcao = client.get("/usuarios?funcao=Garcom")
-    assert resp_list_funcao.status_code == 200
-    assert any(u["idUsuario"] == id_criado for u in resp_list_funcao.json())
+        # 4.4 LIST WITH FILTERS & SEARCH
+        lista_rest = service.list_all(idRestaurante=id_restaurante)
+        assert len(lista_rest) >= 1
+        lista_funcao = service.list_all(funcao="Garcom")
+        assert any(u.idUsuario == id_criado for u in lista_funcao)
+        lista_busca = service.list_all(busca="João Garçom")
+        assert any(u.idUsuario == id_criado for u in lista_busca)
+        print("   [PASS] LIST: Filtros por restaurante, cargo e busca por texto funcionando.")
 
-    resp_list_busca = client.get("/usuarios?busca=João Garçom")
-    assert resp_list_busca.status_code == 200
-    assert any(u["idUsuario"] == id_criado for u in resp_list_busca.json())
-    print("   [PASS] GET /usuarios: Filtros por restaurante, cargo e busca textual funcionando.")
+        # 4.5 UPDATE
+        dados_atualizacao = UsuarioUpdate(
+            nome="João Pedro Garçom",
+            funcao="Gerente",
+            senha="NovaSenhaSegura@123",
+        )
+        usuario_atualizado = service.update(id_criado, dados_atualizacao)
+        assert usuario_atualizado.nome == "João Pedro Garçom"
+        assert usuario_atualizado.funcao == "Gerente"
+        assert verificar_senha("NovaSenhaSegura@123", usuario_atualizado.senha) is True
+        # 4.6 MODEL METHODS & STATUS CHANGE
+        assert usuario_atualizado.autenticar("NovaSenhaSegura@123") is True
+        assert usuario_atualizado.autenticar("SenhaIncorreta") is False
+        print("   [PASS] MODEL: Método usuario.autenticar() validado com sucesso.")
 
-    # UPDATE (PUT)
-    resp_update = client.put(f"/usuarios/{id_criado}", json={
-        "nome": "João Pedro Garçom",
-        "perfil": "Gerente",
-        "senha": "NovaSenhaSegura@123",
-    })
-    assert resp_update.status_code == 200
-    dados_update = resp_update.json()
-    assert dados_update["nome"] == "João Pedro Garçom"
-    assert dados_update["perfil"] == "Gerente"
-    print("   [PASS] PUT /usuarios/{id}: Nome e função atualizados com sucesso.")
+        usuario_inativado = service.change_status(id_criado, False)
+        assert usuario_inativado.status is False
+        usuario_reativado = service.change_status(id_criado, True)
+        assert usuario_reativado.status is True
+        print("   [PASS] STATUS CHANGE: Ativação/desativação de usuário testada.")
 
-    # PATCH STATUS (desativar e reativar)
-    resp_desativar = client.patch(f"/usuarios/{id_criado}/status", json={"status": False})
-    assert resp_desativar.status_code == 200
-    assert resp_desativar.json()["status"] is False
+        # 4.7 DELETE (Model Anonymization)
+        service.delete(id_criado)
+        usuario_deletado = service.get_by_id(id_criado)
+        assert usuario_deletado.nome == "USUARIO REMOVIDO"
+        assert usuario_deletado.cpf == "000.000.000-00"
+        assert usuario_deletado.email == "USUARIO REMOVIDO"
+        print("   [PASS] DELETE: Usuário anonimizado conforme método delete do Model.")
 
-    resp_reativar = client.patch(f"/usuarios/{id_criado}/status", json={"status": True})
-    assert resp_reativar.status_code == 200
-    assert resp_reativar.json()["status"] is True
-    print("   [PASS] PATCH /usuarios/{id}/status: Ativação/desativação testada.")
+    finally:
+        session.close()
 
-    # DELETE
-    resp_delete = client.delete(f"/usuarios/{id_criado}")
-    assert resp_delete.status_code == 204
-    print("   [PASS] DELETE /usuarios/{id}: Usuário removido/anonimizado com sucesso.")
-
-    # -----------------------------------------------------------------
-    # 9. PÓS-DELETE — verifica anonimização via GET
-    # -----------------------------------------------------------------
-    print("\n[9/9] Verificação Pós-Delete (anonimização):")
-    resp_pos_delete = client.get(f"/usuarios/{id_criado}")
-    assert resp_pos_delete.status_code == 200
-    dados_anonimizado = resp_pos_delete.json()
-    assert dados_anonimizado["nome"].startswith("USUARIO REMOVIDO")
-    assert dados_anonimizado["email"].startswith("removido_")
-    assert dados_anonimizado["status"] is False
-    print("   [PASS] Usuário anonimizado corretamente após exclusão.")
-
-    # =================================================================
     print("\n" + "=" * 70)
-    print("TODOS OS TESTES DE USUÁRIO FORAM EXECUTADOS COM 100% DE SUCESSO!")
+    print("TODOS OS TESTES FORAM EXECUTADOS COM 100% DE SUCESSO!")
     print("=" * 70)
 
 

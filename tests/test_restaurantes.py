@@ -36,40 +36,20 @@ def run_restaurante_tests():
     # -------------------------------------------------------------
     print("\n[1/4] Testes Unitários de Formatação e Validação de Campos:")
 
-client = TestClient(app)
+DATABASE_URL = os.getenv(
+    "DATABASE_URL"
+)
 
 
-# =====================================================================
-# HELPERS
-# =====================================================================
-
-def _gerar_cnpj_valido(seed: int) -> str:
-    """Gera um CNPJ válido (formatado) a partir de uma semente numérica."""
-    base = f"{(seed % 90000000 + 10000000):08d}0001"
-    p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-    s1 = sum(int(base[i]) * p1[i] for i in range(12))
-    d1 = 0 if s1 % 11 < 2 else 11 - (s1 % 11)
-    p2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-    s2 = sum(int((base + str(d1))[i]) * p2[i] for i in range(13))
-    d2 = 0 if s2 % 11 < 2 else 11 - (s2 % 11)
-    return f"{base[:2]}.{base[2:5]}.{base[5:8]}/{base[8:12]}-{d1}{d2}"
-
-
-# =====================================================================
-# TESTES
-# =====================================================================
-
-def test_restaurant():
+def run_restaurante_tests():
     print("=" * 70)
-    print("SUÍTE DE TESTES REESCRITA: RESTAURANTES (Schemas + API CRUD)")
+    print("INICIANDO SUÍTE DE TESTES: CRUD DE RESTAURANTES & REGRAS DE NEGÓCIO")
     print("=" * 70)
 
-    ts = int(time.time() * 1000)
-
-    # -----------------------------------------------------------------
+    # -------------------------------------------------------------
     # 1. TESTES UNITÁRIOS DE VALIDAÇÃO DE CNPJ, CEP E TELEFONE
-    # -----------------------------------------------------------------
-    print("\n[1/7] Testes Unitários de Formatação e Validação de Campos:")
+    # -------------------------------------------------------------
+    print("\n[1/4] Testes Unitários de Formatação e Validação de Campos:")
     cnpj_valido_1 = "11222333000181"
     cnpj_valido_2 = "11.222.333/0001-81"
     assert validar_cnpj(cnpj_valido_1) == "11.222.333/0001-81"
@@ -105,8 +85,8 @@ def test_restaurant():
     # -------------------------------------------------------------
     # -----------------------------------------------------------------
     # 2. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
-    # -----------------------------------------------------------------
-    print("\n[2/7] Testes de Schemas Pydantic:")
+    # -------------------------------------------------------------
+    print("\n[2/4] Testes de Schemas Pydantic:")
     try:
         RestauranteCreate(
             nome="R",  # Menos de 2 caracteres

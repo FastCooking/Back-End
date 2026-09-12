@@ -16,6 +16,8 @@ if str(ROOT_DIR) not in sys.path:
 
 from src.controllers.AuthController import router as auth_router
 from src.controllers.CardapioController import router as cardapio_router
+from src.controllers.EstoqueController import router as estoque_router
+from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
 from src.database.connection import test_connection
@@ -30,9 +32,15 @@ app = FastAPI(
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ):
-    """Trata erros de validação de campos obrigatórios retornando status 400."""
+    """Trata erros de validação: retorna 400 para campos obrigatórios ausentes e 422 para dados inválidos."""
+    has_missing = any(err.get("type") == "missing" for err in exc.errors())
+    status_code = (
+        status.HTTP_400_BAD_REQUEST
+        if has_missing
+        else status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=status_code,
         content={
             "message": "Erro de validação: campos obrigatórios ausentes ou inválidos.",
             "detail": jsonable_encoder(exc.errors()),
@@ -43,11 +51,14 @@ app.include_router(usuario_router)
 app.include_router(restaurante_router)
 app.include_router(auth_router)
 app.include_router(cardapio_router)
+app.include_router(estoque_router)
+app.include_router(ficha_tecnica_router)
 
 
 @app.get("/", tags=["Health Check"])
 async def test():
     return {"message": "FastCooking API is running"}
+
 
 def getVarsEnv():
     """
@@ -59,10 +70,11 @@ def getVarsEnv():
         "DATABASE_URL": os.getenv("DATABASE_URL"),
         "BCRYPT_ROUNDS": os.getenv("BCRYPT_ROUNDS"),
         "SERVER_PORT": os.getenv("SERVER_PORT"),
-        "JWT_SECRET": os.getenv("JWT_SECRET")
+        "JWT_SECRET": os.getenv("JWT_SECRET"),
     }
 
     return varsEnv
+
 
 def envTest(env: dict):
     """
@@ -71,11 +83,10 @@ def envTest(env: dict):
 
     for key, value in env.items():
         if value is None:
-            raise OSError(
-                f"[ERRO] A variável de ambiente '{key}' não foi encontrada."
-            )
+            raise OSError(f"[ERRO] A variável de ambiente '{key}' não foi encontrada.")
 
     print("[OK] Variáveis de ambiente carregadas.")
+
 
 if __name__ == "__main__":
     varsEnv = getVarsEnv()

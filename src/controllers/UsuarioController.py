@@ -15,7 +15,6 @@ from src.services.UsuarioService import UsuarioService
 
 router = APIRouter(prefix="/usuarios", tags=["Usuários"])
 
-
 @router.post(
     "",
     response_model=UsuarioResponse,
