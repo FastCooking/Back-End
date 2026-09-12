@@ -1,3 +1,4 @@
+import secrets
 from typing import Optional
 
 from sqlalchemy import Boolean, Column, Integer, String
@@ -92,6 +93,20 @@ class Restaurante(Base):
     def disable(self, db: Session) -> "Restaurante":
         """Desativa o restaurante."""
         self.status = False
+        db.commit()
+        db.refresh(self)
+        return self
+
+    def delete(self, db: Session) -> "Restaurante":
+        """Anonimiza e desativa o restaurante preservando a unicidade das restrições de banco."""
+        codigo = secrets.token_hex(5)
+        self.nome = f"RESTAURANTE REMOVIDO {self.idRestaurante}"
+        self.cnpj = f"00.000.000/{codigo[:4]}-{codigo[4:6]}"
+        self.email = f"removido_{codigo}@anonimizado.local"
+        self.telefone = "(00) 00000-0000"
+        self.cep = "00000-000"
+        self.status = False
+
         db.commit()
         db.refresh(self)
         return self

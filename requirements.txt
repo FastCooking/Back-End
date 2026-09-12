@@ -11,3 +11,4 @@ ruff
 email-validator
 httpx
 python-jose[cryptography]
+httpx

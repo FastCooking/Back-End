@@ -18,6 +18,8 @@ from src.controllers.AuthController import router as auth_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
 from src.controllers.CardapioController import router as cardapio_router
+from src.controllers.RestauranteController import router as restaurante_router
+from src.controllers.UsuarioController import router as usuario_router
 from src.database.connection import test_connection
 
 app = FastAPI(
@@ -36,6 +38,7 @@ async def validation_exception_handler(
         content={
             "message": "Erro de validação: campos obrigatórios ausentes ou inválidos.",
             "detail": jsonable_encoder(exc.errors()),
+            "detail": exc.errors(),
         },
     )
 
