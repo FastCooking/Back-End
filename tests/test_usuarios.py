@@ -36,15 +36,10 @@ def run_unit_and_integration_tests():
     # 1. TESTES DE VALIDAÇÃO DE CPF
     # -------------------------------------------------------------
     print("\n[1/6] Testes Unitários de Validação de CPF:")
-    cpf_valido_1 = "52998224725"  # CPF válido gerado algoritmicamente
-    cpf_valido_2 = "529.982.247-25"
     
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
 
 from src.app import app
-from src.schemas.UsuarioSchema import UsuarioCreate, validar_cpf
-from src.services.UsuarioService import hash_senha, verificar_senha
 
 client = TestClient(app)
 
@@ -165,7 +160,6 @@ def test_users():
             email="valido@email.com",
             senha="123456senha",
             funcao="CargoInexistente",  # Deve falhar
-            funcao="CargoInexistente",
         )
         raise AssertionError("Função inválida foi aceita!")
     except ValidationError:
@@ -180,7 +174,6 @@ def test_users():
             cpf="52998224725",
             email="valido2@email.com",
             senha="123",  # Menos de 6 caracteres
-            senha="123",
             funcao="Garcom",
         )
         raise AssertionError("Senha curta foi aceita!")

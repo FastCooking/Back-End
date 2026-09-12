@@ -5,9 +5,9 @@ from pathlib import Path
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.encoders import jsonable_encoder
 
 # Adiciona o diretório raiz do projeto ao sys.path para garantir importações com 'src.'
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -15,8 +15,6 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from src.controllers.AuthController import router as auth_router
-from src.controllers.RestauranteController import router as restaurante_router
-from src.controllers.UsuarioController import router as usuario_router
 from src.controllers.CardapioController import router as cardapio_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
@@ -38,7 +36,6 @@ async def validation_exception_handler(
         content={
             "message": "Erro de validação: campos obrigatórios ausentes ou inválidos.",
             "detail": jsonable_encoder(exc.errors()),
-            "detail": exc.errors(),
         },
     )
 

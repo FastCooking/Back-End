@@ -11,7 +11,6 @@ from src.schemas.CardapioSchema import (
 )
 from src.services.CardapioService import CardapioService
 
-
 router = APIRouter(
     prefix="/cardapio",
     tags=["Cardápio"]

@@ -13,21 +13,17 @@ from src.schemas.RestauranteSchema import (
     RestauranteCreate,
     RestauranteResponse,
     RestauranteUpdate,
-from fastapi.testclient import TestClient
-from pydantic import ValidationError
-
-from src.app import app
-from src.schemas.RestauranteSchema import (
-    RestauranteCreate,
     validar_cep,
     validar_cnpj,
     validar_telefone,
 )
 from src.services.RestauranteService import RestauranteService
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+from fastapi.testclient import TestClient
+
+from src.app import app
 
 
 def run_restaurante_tests():
@@ -107,17 +103,13 @@ def test_restaurant():
     # -------------------------------------------------------------
     # 2. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
     # -------------------------------------------------------------
-    print("\n[2/4] Testes de Schemas Pydantic:")
-    try:
-        RestauranteCreate(
-            nome="R",  # Menos de 2 caracteres
     # -----------------------------------------------------------------
     # 2. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
     # -----------------------------------------------------------------
     print("\n[2/7] Testes de Schemas Pydantic:")
     try:
         RestauranteCreate(
-            nome="R",   # Menos de 2 caracteres
+            nome="R",  # Menos de 2 caracteres
             cnpj="11.222.333/0001-81",
             telefone="(11) 98765-4321",
             email="contato@restaurante.com",
