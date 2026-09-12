@@ -23,6 +23,7 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
       SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
+      MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL || vars.MIGRATION_DATABASE_URL || secrets.DATABASE_URL || vars.DATABASE_URL }}
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
       SERVER_PORT: ${{ vars.SERVER_PORT || secrets.SERVER_PORT || '8000' }}
@@ -44,6 +45,8 @@ jobs:
         run: ruff check .
 
       - name: Rodar migrações
+        env:
+          DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
         run: alembic upgrade head
 
       - name: Rodar testes
@@ -58,6 +61,7 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
       SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
+      MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL || vars.MIGRATION_DATABASE_URL || secrets.DATABASE_URL || vars.DATABASE_URL }}
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
       SERVER_PORT: ${{ vars.SERVER_PORT || secrets.SERVER_PORT || '8000' }}
@@ -79,6 +83,8 @@ jobs:
         run: ruff check .
 
       - name: Rodar migrações
+        env:
+          DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
         run: alembic upgrade head
 
       - name: Rodar testes
