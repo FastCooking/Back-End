@@ -1,7 +1,6 @@
 import os
 import sys
 from pathlib import Path
-import uvicorn
 
 # Adiciona o diretório raiz do projeto ao sys.path para garantir importações com 'src.'
 ROOT_DIR = Path(__file__).resolve().parents[1]
