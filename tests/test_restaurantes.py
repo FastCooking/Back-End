@@ -19,6 +19,23 @@ from src.schemas.RestauranteSchema import (
 )
 from src.services.RestauranteService import RestauranteService
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+from fastapi.testclient import TestClient
+
+from src.app import app
+
+
+def run_restaurante_tests():
+    print("=" * 70)
+    print("INICIANDO SUÍTE DE TESTES: CRUD DE RESTAURANTES & REGRAS DE NEGÓCIO")
+    print("=" * 70)
+
+    # -------------------------------------------------------------
+    # 1. TESTES UNITÁRIOS DE VALIDAÇÃO DE CNPJ, CEP E TELEFONE
+    # -------------------------------------------------------------
+    print("\n[1/4] Testes Unitários de Formatação e Validação de Campos:")
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL"
 )
@@ -43,6 +60,9 @@ def run_restaurante_tests():
         "00000000000000",  # dígitos repetidos
         "11222333000180",  # dígito verificador incorreto
         "123456",          # tamanho insuficiente
+        "00000000000000",   # dígitos repetidos
+        "11222333000180",   # dígito verificador incorreto
+        "123456",           # tamanho insuficiente
     ]
     for c_inv in cnpjs_invalidos:
         try:
@@ -61,6 +81,9 @@ def run_restaurante_tests():
     print("   [PASS] Telefones fixo e móvel validados e formatados.")
 
     # -------------------------------------------------------------
+    # 2. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
+    # -------------------------------------------------------------
+    # -----------------------------------------------------------------
     # 2. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
     # -------------------------------------------------------------
     print("\n[2/4] Testes de Schemas Pydantic:")
@@ -161,6 +184,101 @@ def run_restaurante_tests():
     finally:
         session.close()
 
+    # -----------------------------------------------------------------
+    # 3. CREATE VIA API (POST /restaurantes)
+    # -----------------------------------------------------------------
+    print("\n[3/7] CREATE via API (POST /restaurantes):")
+    cnpj_teste = _gerar_cnpj_valido(ts)
+    payload_criacao = {
+        "nome": f"Restaurante Gourmet {ts}",
+        "cnpj": cnpj_teste,
+        "telefone": "(11) 98765-4321",
+        "email": f"gourmet_{ts}@restaurante.com",
+        "cep": "01001-000",
+        "status": True,
+    }
+    resp_create = client.post("/restaurantes", json=payload_criacao)
+    assert resp_create.status_code == 201, f"Esperava 201, recebeu {resp_create.status_code}: {resp_create.text}"
+    dados_criado = resp_create.json()
+
+    id_criado = dados_criado["idRestaurante"]
+    assert id_criado is not None
+    assert dados_criado["nome"] == f"Restaurante Gourmet {ts}"
+    assert dados_criado["cnpj"] == cnpj_teste
+    assert dados_criado["status"] is True
+    print(f"   [PASS] Restaurante ID {id_criado} cadastrado com sucesso via API.")
+
+    # -----------------------------------------------------------------
+    # 4. DUPLICIDADE (409 Conflict)
+    # -----------------------------------------------------------------
+    print("\n[4/7] Validação de Duplicidade (POST /restaurantes com mesmo CNPJ/e-mail):")
+    resp_dup = client.post("/restaurantes", json=payload_criacao)
+    assert resp_dup.status_code == 409, f"Esperava 409, recebeu {resp_dup.status_code}"
+    print("   [PASS] CNPJ/e-mail duplicado rejeitado com 409 Conflict.")
+
+    # -----------------------------------------------------------------
+    # 5. GET BY ID + LIST com filtros
+    # -----------------------------------------------------------------
+    print("\n[5/7] GET BY ID + LIST via API:")
+
+    resp_get = client.get(f"/restaurantes/{id_criado}")
+    assert resp_get.status_code == 200
+    assert resp_get.json()["idRestaurante"] == id_criado
+    assert resp_get.json()["nome"] == dados_criado["nome"]
+    print("   [PASS] GET /restaurantes/{id}: Restaurante recuperado e validado.")
+
+    resp_list = client.get("/restaurantes")
+    assert resp_list.status_code == 200
+    assert any(r["idRestaurante"] == id_criado for r in resp_list.json())
+
+    resp_busca = client.get(f"/restaurantes?busca=Restaurante Gourmet {ts}")
+    assert resp_busca.status_code == 200
+    assert any(r["idRestaurante"] == id_criado for r in resp_busca.json())
+    print("   [PASS] GET /restaurantes: Listagem e busca textual funcionando.")
+
+    # -----------------------------------------------------------------
+    # 6. UPDATE + STATUS CHANGE via API
+    # -----------------------------------------------------------------
+    print("\n[6/7] UPDATE + STATUS CHANGE via API:")
+
+    resp_update = client.put(f"/restaurantes/{id_criado}", json={
+        "nome": f"Restaurante Gourmet Atualizado {ts}",
+        "telefone": "(11) 91111-2222",
+    })
+    assert resp_update.status_code == 200
+    dados_update = resp_update.json()
+    assert dados_update["nome"] == f"Restaurante Gourmet Atualizado {ts}"
+    assert dados_update["telefone"] == "(11) 91111-2222"
+    print("   [PASS] PUT /restaurantes/{id}: Dados atualizados com sucesso.")
+
+    # Desativar
+    resp_desativar = client.patch(f"/restaurantes/{id_criado}/status", json={"status": False})
+    assert resp_desativar.status_code == 200
+    assert resp_desativar.json()["status"] is False
+
+    # Reativar
+    resp_reativar = client.patch(f"/restaurantes/{id_criado}/status", json={"status": True})
+    assert resp_reativar.status_code == 200
+    assert resp_reativar.json()["status"] is True
+    print("   [PASS] PATCH /restaurantes/{id}/status: Ativação/desativação efetuada.")
+
+    # -----------------------------------------------------------------
+    # 7. DELETE via API (soft delete / desativação)
+    # -----------------------------------------------------------------
+    print("\n[7/7] DELETE via API (POST /restaurantes/{id}):")
+    resp_delete = client.delete(f"/restaurantes/{id_criado}")
+    assert resp_delete.status_code == 204
+
+    # Verifica que o restaurante foi desativado e anonimizado (soft delete)
+    resp_pos_delete = client.get(f"/restaurantes/{id_criado}")
+    assert resp_pos_delete.status_code == 200
+    dados_anonimizado = resp_pos_delete.json()
+    assert dados_anonimizado["nome"].startswith("RESTAURANTE REMOVIDO")
+    assert dados_anonimizado["email"].startswith("removido_")
+    assert dados_anonimizado["status"] is False
+    print("   [PASS] DELETE /restaurantes/{id}: Restaurante anonimizado e desativado com sucesso.")
+
+    # =================================================================
     print("\n" + "=" * 70)
     print("TODOS OS TESTES DE RESTAURANTE PASSARAM COM 100% DE SUCESSO!")
     print("=" * 70)
@@ -168,3 +286,4 @@ def run_restaurante_tests():
 
 if __name__ == "__main__":
     run_restaurante_tests()
+    test_restaurant()

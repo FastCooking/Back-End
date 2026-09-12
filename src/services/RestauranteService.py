@@ -129,4 +129,7 @@ class RestauranteService:
         """Desativa o restaurante (soft delete via disable do Model)."""
         restaurante = self.get_by_id(idRestaurante)
         restaurante.disable(self.db)
+        """Anonimiza e desativa o restaurante (soft delete via delete do Model)."""
+        restaurante = self.get_by_id(idRestaurante)
+        restaurante.disable(self.db)
         return True

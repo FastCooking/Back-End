@@ -11,4 +11,6 @@ ruff
 email-validator
 httpx
 python-jose[cryptography]
-psycopg2-binary==2.9.9
+httpx
+psycopg2-binary>=2.9.0
+sqlalchemy[postgresql_psycopg]==2.0.30

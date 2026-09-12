@@ -13,6 +13,12 @@ if not DATABASE_URL:
     raise ValueError("DATABASE_URL não encontrada.")
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+if make_url(DATABASE_URL).drivername == "postgresql":
+    DATABASE_URL = make_url(DATABASE_URL).set(drivername="postgresql+psycopg").render_as_string(
+        hide_password=False
+    )
+
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fastcooking.db")
