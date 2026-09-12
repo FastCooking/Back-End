@@ -8,8 +8,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from src.core.security import criar_token
 from src.database.connection import SessionLocal
 from src.models.Restaurante import Restaurante
+from src.models.Usuario import Usuario
 from src.schemas.UsuarioSchema import (
     UsuarioCreate,
     UsuarioResponse,
@@ -82,6 +84,39 @@ def _criar_restaurante_via_api() -> dict:
     resp = client.post("/restaurantes", json=payload)
     assert resp.status_code == 201, f"Falha ao criar restaurante auxiliar: {resp.text}"
     return resp.json()
+
+
+def _obter_headers_gerente() -> dict[str, str]:
+    """Obtém um token de gerente, criando um usuário de teste quando necessário."""
+    session = SessionLocal()
+    try:
+        gerente = (
+            session.query(Usuario)
+            .filter(Usuario.funcao == "Gerente", Usuario.status.is_(True))
+            .first()
+        )
+        if gerente is None:
+            restaurante = session.query(Restaurante).first()
+            assert restaurante is not None, "É necessário um restaurante para criar o gerente de teste"
+            ts = int(time.time() * 1000)
+            gerente = Usuario(
+                idRestaurante=restaurante.idRestaurante,
+                nome="Gerente de Teste",
+                cpf=_gerar_cpf_valido(ts),
+                email=f"gerente_teste_{ts}@fastcooking.com",
+                senha=hash_senha("SenhaGerente@2026"),
+                funcao="Gerente",
+                status=True,
+            )
+            session.add(gerente)
+            session.commit()
+            session.refresh(gerente)
+
+        return {
+            "Authorization": f"Bearer {criar_token(gerente.idUsuario, gerente.funcao)}"
+        }
+    finally:
+        session.close()
 
 
 # =====================================================================
@@ -307,6 +342,7 @@ def test_users():
 
     print("\n" + "=" * 70)
     print("TODOS OS TESTES FORAM EXECUTADOS COM 100% DE SUCESSO!")
+    headers = _obter_headers_gerente()
     # -----------------------------------------------------------------
     # 4. CREATE VIA API — Critério: cria funcionário com nome, login,
     #    senha e perfil; senha NÃO retorna no payload
@@ -330,7 +366,7 @@ def test_users():
         "cpf": cpf_usuario,
         "status": True,
     }
-    resp_create = client.post("/usuarios", json=payload_criacao)
+    resp_create = client.post("/usuarios", json=payload_criacao, headers=headers)
     assert resp_create.status_code == 201, f"Esperava 201, recebeu {resp_create.status_code}: {resp_create.text}"
     dados_criado = resp_create.json()
 
@@ -359,7 +395,7 @@ def test_users():
     # 6. DUPLICIDADE — Critério: login não pode ser duplicado (409)
     # -----------------------------------------------------------------
     print("\n[6/9] Validação de Duplicidade (POST /usuarios com mesmo login):")
-    resp_dup = client.post("/usuarios", json=payload_criacao)
+    resp_dup = client.post("/usuarios", json=payload_criacao, headers=headers)
     assert resp_dup.status_code == 409, f"Esperava 409, recebeu {resp_dup.status_code}"
     print("   [PASS] Login/e-mail duplicado rejeitado com 409 Conflict.")
 
@@ -374,7 +410,7 @@ def test_users():
         {"login": "semperfil@email.com", "nome": "Sem Perfil", "senha": "123456senha"},
     ]
     for p in payloads_invalidos:
-        resp_inv = client.post("/usuarios", json=p)
+        resp_inv = client.post("/usuarios", json=p, headers=headers)
         assert resp_inv.status_code == 400, (
             f"Esperava 400 para payload {p}, recebeu {resp_inv.status_code}"
         )

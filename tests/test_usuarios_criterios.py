@@ -10,12 +10,23 @@ from fastapi.testclient import TestClient
 from src.app import app
 from src.core.security import criar_token
 from src.database.connection import SessionLocal
+from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario
+from src.services.UsuarioService import hash_senha
 
 client = TestClient(app)
 DATABASE_URL = os.getenv(
     "DATABASE_URL"
 )
+
+
+def _gerar_cpf_valido(seed: int) -> str:
+    base = f"{(seed % 900000000 + 100000000):09d}"
+    soma1 = sum(int(base[i]) * (10 - i) for i in range(9))
+    digito_1 = 0 if (soma1 * 10) % 11 == 10 else (soma1 * 10) % 11
+    soma2 = sum(int((base + str(digito_1))[i]) * (11 - i) for i in range(10))
+    digito_2 = 0 if (soma2 * 10) % 11 == 10 else (soma2 * 10) % 11
+    return f"{base[:3]}.{base[3:6]}.{base[6:9]}-{digito_1}{digito_2}"
 
 
 def run_acceptance_criteria_validation():
@@ -34,7 +45,21 @@ def run_acceptance_criteria_validation():
             .filter(Usuario.funcao == "Gerente", Usuario.status.is_(True))
             .first()
         )
-        assert gerente is not None, "É necessário um gerente ativo para testar o endpoint protegido"
+        if gerente is None:
+            restaurante = auth_session.query(Restaurante).first()
+            assert restaurante is not None, "É necessário um restaurante para criar o gerente de teste"
+            gerente = Usuario(
+                idRestaurante=restaurante.idRestaurante,
+                nome="Gerente de Teste",
+                cpf=_gerar_cpf_valido(int(time.time() * 1000)),
+                email=f"gerente_teste_{ts}@fastcooking.com",
+                senha=hash_senha("SenhaGerente@2026"),
+                funcao="Gerente",
+                status=True,
+            )
+            auth_session.add(gerente)
+            auth_session.commit()
+            auth_session.refresh(gerente)
         headers = {
             "Authorization": f"Bearer {criar_token(gerente.idUsuario, gerente.funcao)}"
         }
