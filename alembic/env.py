@@ -19,10 +19,16 @@ load_dotenv(ROOT_DIR / ".env")
 # access to the values within the .ini file in use.
 config = context.config
 
+from sqlalchemy.engine import make_url
+
 # Sobrescreve a URL com a variável de ambiente DATABASE_URL se existir
 database_url = os.getenv("DATABASE_URL")
 if database_url:
-    # Caso contenha % (por exemplo em senhas codificadas), escapa para configparser
+    url_obj = make_url(database_url)
+    if url_obj.drivername == "postgresql":
+        database_url = url_obj.set(drivername="postgresql+psycopg").render_as_string(
+            hide_password=False
+        )
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
