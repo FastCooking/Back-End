@@ -14,6 +14,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from src.controllers.AuthController import router as auth_router
 from src.controllers.CardapioController import router as cardapio_router
 from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
@@ -48,6 +49,7 @@ async def validation_exception_handler(
 
 app.include_router(usuario_router)
 app.include_router(restaurante_router)
+app.include_router(auth_router)
 app.include_router(cardapio_router)
 app.include_router(estoque_router)
 app.include_router(ficha_tecnica_router)

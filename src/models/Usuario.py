@@ -1,8 +1,8 @@
-import secrets
+from datetime import datetime
 from typing import Optional
 
 import bcrypt
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Session, relationship
 
 from src.database.connection import Base
@@ -22,6 +22,8 @@ class Usuario(Base):
     senha : str = Column(String(255), nullable=False)
     funcao : str = Column(String(50), nullable=False)
     status : bool = Column(Boolean, nullable=False, default=True )
+    tentativasFalhas: int = Column(Integer, nullable=False, default=0)
+    bloqueadoAte: "datetime | None" = Column(DateTime, nullable=True)
 
     restaurante = relationship("Restaurante", back_populates="usuarios")
     pedidos_atendidos = relationship("Pedido", back_populates="garcom", foreign_keys="Pedido.idGarcom")
@@ -110,15 +112,13 @@ class Usuario(Base):
         except (ValueError, TypeError):
             return False
 
-    def delete(self, db: Session) -> "Usuario":
-        """Anonimiza e desativa o funcionário preservando a unicidade das restrições de banco."""
-        codigo = secrets.token_hex(5)
-        self.nome = f"USUARIO REMOVIDO {self.idUsuario}"
-        self.cpf = f"000.000.{codigo[:3]}-{codigo[3:5]}"
-        self.email = f"removido_{codigo}@anonimizado.local"
-        self.senha = bcrypt.hashpw(secrets.token_bytes(16), bcrypt.gensalt()).decode("utf-8")
-        self.status = False
-
+    def delete(self, db: Session) -> bool:
+        """Remove o funcionário do banco de dados."""
+        self.nome = "USUARIO REMOVIDO"
+        self.cpf = "000.000.000-00"
+        self.email = "USUARIO REMOVIDO"
+        self.senha = "" #substituir por senha padrao placeholder
+            
         db.commit()
         db.refresh(self)
         return self

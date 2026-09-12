@@ -126,7 +126,7 @@ class RestauranteService:
         return restaurante
 
     def delete(self, idRestaurante: int) -> bool:
-        """Anonimiza e desativa o restaurante (soft delete via delete do Model)."""
+        """Desativa o restaurante (soft delete via disable do Model)."""
         restaurante = self.get_by_id(idRestaurante)
-        restaurante.delete(self.db)
+        restaurante.disable(self.db)
         return True
