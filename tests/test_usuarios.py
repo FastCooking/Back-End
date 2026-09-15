@@ -6,8 +6,10 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from src.app import app
 from src.core.security import criar_token
 from src.database.connection import SessionLocal
 from src.models.Restaurante import Restaurante
@@ -23,25 +25,6 @@ from src.services.UsuarioService import (
     hash_senha,
     verificar_senha,
 )
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL"
-)
-
-
-def run_unit_and_integration_tests():
-    print("=" * 70)
-    print("INICIANDO SUÍTE DE TESTES: CRUD DE USUÁRIOS & REGRAS DE NEGÓCIO")
-    print("=" * 70)
-
-    # -------------------------------------------------------------
-    # 1. TESTES DE VALIDAÇÃO DE CPF
-    # -------------------------------------------------------------
-    print("\n[1/6] Testes Unitários de Validação de CPF:")
-    
-from fastapi.testclient import TestClient
-
-from src.app import app
 
 client = TestClient(app)
 
@@ -134,7 +117,7 @@ def test_users():
     print("\n[1/6] Testes Unitários de Validação de CPF:")
     cpf_valido_1 = "52998224725"  # CPF válido gerado algoritmicamente
     cpf_valido_2 = "529.982.247-25"
-    
+
     assert validar_cpf(cpf_valido_1) == "529.982.247-25", "Falha ao validar CPF sem máscara"
     assert validar_cpf(cpf_valido_2) == "529.982.247-25", "Falha ao validar CPF com máscara"
     print("   [PASS] CPFs válidos formatados corretamente.")
@@ -144,10 +127,6 @@ def test_users():
         "12345678900",  # dígitos verificadores errados
         "123",          # tamanho insuficiente
         "abcdefghijk",  # não numérico
-        "11111111111",   # todos iguais
-        "12345678900",   # dígitos verificadores errados
-        "123",           # tamanho insuficiente
-        "abcdefghijk",   # não numérico
     ]
     for cpf_inv in cpfs_invalidos:
         try:
@@ -158,10 +137,6 @@ def test_users():
     print("   [PASS] Todos os CPFs inválidos foram devidamente rejeitados.")
 
     # -------------------------------------------------------------
-    # 2. TESTES DE HASH E VERIFICAÇÃO DE SENHA (BCRYPT)
-    # -------------------------------------------------------------
-    print("\n[2/6] Testes de Criptografia e Verificação de Senha:")
-    # -----------------------------------------------------------------
     # 2. TESTES DE HASH E VERIFICAÇÃO DE SENHA (BCRYPT)
     # -------------------------------------------------------------
     print("\n[2/6] Testes de Criptografia e Verificação de Senha:")
@@ -178,13 +153,7 @@ def test_users():
     # 3. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
     # -------------------------------------------------------------
     print("\n[3/6] Testes de Validação de Schemas Pydantic:")
-    
-    # Validação de Função permitida
-    # -----------------------------------------------------------------
-    # 3. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
-    # -------------------------------------------------------------
-    print("\n[3/6] Testes de Validação de Schemas Pydantic:")
-    
+
     # Validação de Função permitida
     try:
         UsuarioCreate(
@@ -200,7 +169,6 @@ def test_users():
         print("   [PASS] Função/Cargo não permitido rejeitado pelo schema.")
 
     # Validação de Senha Curta (< 6 caracteres)
-    # Senha muito curta (< 6 caracteres)
     try:
         UsuarioCreate(
             idRestaurante=1,
@@ -215,7 +183,6 @@ def test_users():
         print("   [PASS] Senha menor que 6 caracteres rejeitada pelo schema.")
 
     # Validação de Email Inválido
-    # E-mail inválido
     try:
         UsuarioCreate(
             idRestaurante=1,
@@ -256,12 +223,7 @@ def test_users():
         service = UsuarioService(session)
 
         # 4.1 CREATE
-        base_cpf = f"{(ts % 900000000 + 100000000):09d}"
-        soma1 = sum(int(base_cpf[i]) * (10 - i) for i in range(9))
-        d1 = 0 if (soma1 * 10) % 11 == 10 else (soma1 * 10) % 11
-        soma2 = sum(int((base_cpf + str(d1))[i]) * (11 - i) for i in range(10))
-        d2 = 0 if (soma2 * 10) % 11 == 10 else (soma2 * 10) % 11
-        cpf_dinamico = f"{base_cpf[:3]}.{base_cpf[3:6]}.{base_cpf[6:9]}-{d1}{d2}"
+        cpf_dinamico = _gerar_cpf_valido(ts)
 
         dados_usuario = UsuarioCreate(
             idRestaurante=id_restaurante,
@@ -339,9 +301,8 @@ def test_users():
     finally:
         session.close()
 
-    print("\n" + "=" * 70)
-    print("TODOS OS TESTES FORAM EXECUTADOS COM 100% DE SUCESSO!")
     headers = _obter_headers_gerente()
+
     # -----------------------------------------------------------------
     # 4. CREATE VIA API — Critério: cria funcionário com nome, login,
     #    senha e perfil; senha NÃO retorna no payload
@@ -379,16 +340,23 @@ def test_users():
 
     # -----------------------------------------------------------------
     # 5. HASH NO BANCO — Critério: senha armazenada em hash bcrypt
-    #    (verificado indiretamente pelo endpoint de autenticação ou
-    #     pelo fato de a API não retornar a senha e o create ter aceitado)
     # -----------------------------------------------------------------
-    print("\n[5/9] Verificação de Hash Bcrypt (via API — sem acesso direto ao banco):")
-    # Re-busca pelo GET para confirmar que a senha não é exposta
+    print("\n[5/9] Verificação de Hash Bcrypt (via API e banco de dados):")
     resp_get = client.get(f"/usuarios/{id_criado}")
     assert resp_get.status_code == 200
     dados_get = resp_get.json()
     assert "senha" not in dados_get, "GET retornou a senha — violação de segurança!"
-    print("   [PASS] Senha não exposta em nenhum endpoint de leitura (hash confirmado pela criação bem-sucedida).")
+
+    session_verificacao = SessionLocal()
+    try:
+        usuario_db = session_verificacao.query(Usuario).filter(Usuario.idUsuario == id_criado).first()
+        assert usuario_db is not None, "Usuário não encontrado no banco de dados"
+        assert usuario_db.senha != senha_teste, "A senha foi gravada em texto plano!"
+        assert usuario_db.senha.startswith(("$2b$", "$2a$")), f"A senha não está em formato bcrypt: {usuario_db.senha}"
+        assert usuario_db.autenticar(senha_teste) is True, "A senha em hash não pôde ser autenticada"
+        print(f"   [PASS] Senha armazenada no banco com hash bcrypt ({usuario_db.senha[:15]}...).")
+    finally:
+        session_verificacao.close()
 
     # -----------------------------------------------------------------
     # 6. DUPLICIDADE — Critério: login não pode ser duplicado (409)
@@ -413,77 +381,76 @@ def test_users():
         assert resp_inv.status_code == 400, (
             f"Esperava 400 para payload {p}, recebeu {resp_inv.status_code}"
         )
-        usuario_criado = service.create(dados_usuario)
-        id_criado = usuario_criado.idUsuario
+    print("   [PASS] Todos os payloads incompletos retornaram 400 Bad Request.")
 
-        assert id_criado is not None, "ID não foi gerado"
-        assert usuario_criado.nome == "João Garçom"
-        assert usuario_criado.cpf == cpf_dinamico
-        assert usuario_criado.funcao == "Garcom"
-        assert verificar_senha("SenhaForte@2026", usuario_criado.senha) is True
-        print(f"   [PASS] CREATE: Usuário ID {id_criado} criado com sucesso.")
+    # -----------------------------------------------------------------
+    # 8. CRUD COMPLETO VIA API (GET, LIST, PUT, PATCH, DELETE)
+    # -----------------------------------------------------------------
+    print("\n[8/9] CRUD Completo via API (GET / LIST / PUT / PATCH status / DELETE):")
 
-        # 4.2 DUPLICATE CHECKS
-        try:
-            service.create(dados_usuario)  # Tenta recriar com mesmo email e cpf
-            raise AssertionError("Permitiu cadastrar usuário com email/CPF duplicado!")
-        except HTTPException as e:
-            assert e.status_code == 409, f"Esperava status 409, obteve {e.status_code}"
-            print("   [PASS] Validação de duplicidade (409 Conflict) confirmada.")
+    # GET BY ID
+    resp_get = client.get(f"/usuarios/{id_criado}")
+    assert resp_get.status_code == 200
+    assert resp_get.json()["idUsuario"] == id_criado
+    print("   [PASS] GET /usuarios/{id}: Usuário recuperado com sucesso.")
 
-        # 4.3 GET BY ID
-        usuario_lido = service.get_by_id(id_criado)
-        assert usuario_lido.idUsuario == id_criado
-        response_model = UsuarioResponse.model_validate(usuario_lido)
-        assert hasattr(response_model, "senha") is False, "A resposta pública NÃO deve conter a senha"
-        print("   [PASS] GET BY ID: Usuário recuperado e serializado sem exposição de senha.")
+    # LIST com filtros
+    resp_list_rest = client.get(f"/usuarios?idRestaurante={id_restaurante}")
+    assert resp_list_rest.status_code == 200
+    assert any(u["idUsuario"] == id_criado for u in resp_list_rest.json())
 
-        # 4.4 LIST WITH FILTERS & SEARCH
-        lista_rest = service.list_all(idRestaurante=id_restaurante)
-        assert len(lista_rest) >= 1
-        lista_funcao = service.list_all(funcao="Garcom")
-        assert any(u.idUsuario == id_criado for u in lista_funcao)
-        lista_busca = service.list_all(busca="João Garçom")
-        assert any(u.idUsuario == id_criado for u in lista_busca)
-        print("   [PASS] LIST: Filtros por restaurante, cargo e busca por texto funcionando.")
+    resp_list_funcao = client.get("/usuarios?funcao=Garcom")
+    assert resp_list_funcao.status_code == 200
+    assert any(u["idUsuario"] == id_criado for u in resp_list_funcao.json())
 
-        # 4.5 UPDATE
-        dados_atualizacao = UsuarioUpdate(
-            nome="João Pedro Garçom",
-            funcao="Gerente",
-            senha="NovaSenhaSegura@123",
-        )
-        usuario_atualizado = service.update(id_criado, dados_atualizacao)
-        assert usuario_atualizado.nome == "João Pedro Garçom"
-        assert usuario_atualizado.funcao == "Gerente"
-        assert verificar_senha("NovaSenhaSegura@123", usuario_atualizado.senha) is True
-        # 4.6 MODEL METHODS & STATUS CHANGE
-        assert usuario_atualizado.autenticar("NovaSenhaSegura@123") is True
-        assert usuario_atualizado.autenticar("SenhaIncorreta") is False
-        print("   [PASS] MODEL: Método usuario.autenticar() validado com sucesso.")
+    resp_list_busca = client.get("/usuarios?busca=João Garçom")
+    assert resp_list_busca.status_code == 200
+    assert any(u["idUsuario"] == id_criado for u in resp_list_busca.json())
+    print("   [PASS] GET /usuarios: Filtros por restaurante, cargo e busca textual funcionando.")
 
-        usuario_inativado = service.change_status(id_criado, False)
-        assert usuario_inativado.status is False
-        usuario_reativado = service.change_status(id_criado, True)
-        assert usuario_reativado.status is True
-        print("   [PASS] STATUS CHANGE: Ativação/desativação de usuário testada.")
+    # UPDATE (PUT)
+    resp_update = client.put(f"/usuarios/{id_criado}", json={
+        "nome": "João Pedro Garçom",
+        "perfil": "Gerente",
+        "senha": "NovaSenhaSegura@123",
+    })
+    assert resp_update.status_code == 200
+    dados_update = resp_update.json()
+    assert dados_update["nome"] == "João Pedro Garçom"
+    assert dados_update["perfil"] == "Gerente"
+    print("   [PASS] PUT /usuarios/{id}: Nome e função atualizados com sucesso.")
 
-        # 4.7 DELETE (Model Anonymization)
-        service.delete(id_criado)
-        usuario_deletado = service.get_by_id(id_criado)
-        assert usuario_deletado.nome == "USUARIO REMOVIDO"
-        assert usuario_deletado.cpf == "000.000.000-00"
-        assert usuario_deletado.email == "USUARIO REMOVIDO"
-        print("   [PASS] DELETE: Usuário anonimizado conforme método delete do Model.")
+    # PATCH STATUS (desativar e reativar)
+    resp_desativar = client.patch(f"/usuarios/{id_criado}/status", json={"status": False})
+    assert resp_desativar.status_code == 200
+    assert resp_desativar.json()["status"] is False
 
-    finally:
-        session.close()
+    resp_reativar = client.patch(f"/usuarios/{id_criado}/status", json={"status": True})
+    assert resp_reativar.status_code == 200
+    assert resp_reativar.json()["status"] is True
+    print("   [PASS] PATCH /usuarios/{id}/status: Ativação/desativação testada.")
+
+    # DELETE
+    resp_delete = client.delete(f"/usuarios/{id_criado}")
+    assert resp_delete.status_code == 204
+    print("   [PASS] DELETE /usuarios/{id}: Usuário removido/anonimizado com sucesso.")
+
+    # -----------------------------------------------------------------
+    # 9. PÓS-DELETE — verifica anonimização via GET
+    # -----------------------------------------------------------------
+    print("\n[9/9] Verificação Pós-Delete (anonimização):")
+    resp_pos_delete = client.get(f"/usuarios/{id_criado}")
+    assert resp_pos_delete.status_code == 200
+    dados_anonimizado = resp_pos_delete.json()
+    assert dados_anonimizado["nome"].startswith("USUARIO REMOVIDO")
+    assert dados_anonimizado["email"].startswith("removido_")
+    assert dados_anonimizado["status"] is False
+    print("   [PASS] Usuário anonimizado corretamente após exclusão.")
 
     print("\n" + "=" * 70)
-    print("TODOS OS TESTES FORAM EXECUTADOS COM 100% DE SUCESSO!")
+    print("TODOS OS TESTES DE USUÁRIO FORAM EXECUTADOS COM 100% DE SUCESSO!")
     print("=" * 70)
 
 
 if __name__ == "__main__":
-    run_unit_and_integration_tests()
     test_users()

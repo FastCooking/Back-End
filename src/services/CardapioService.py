@@ -14,44 +14,47 @@ class CardapioService:
     def criar(
         self,
         dados: CardapioCreate,
-        usuario: Usuario
+        usuario: Usuario | None = None,
     ) -> Cardapio:
+        id_restaurante = dados.idRestaurante or (usuario.idRestaurante if usuario else 1)
 
         item = Cardapio.create(
             db=self.db,
-            idRestaurante=usuario.idRestaurante,
+            idRestaurante=id_restaurante,
             nome=dados.nome,
-            preco=dados.preco,
+            preco=float(dados.preco),
             categoria=dados.categoria,
-            pathImage=None
+            pathImage=dados.pathImage,
+            descricao=dados.descricao,
         )
 
         return item
 
     def listar(
         self,
-        idRestaurante: int
+        idRestaurante: int | None = None,
     ) -> list[Cardapio]:
+        if idRestaurante is None:
+            idRestaurante = 1
 
         return Cardapio.get_all_by_restaurante(
             db=self.db,
-            idRestaurante=idRestaurante
+            idRestaurante=idRestaurante,
         )
 
     def buscar_por_id(
         self,
-        idCardapio: int
+        idCardapio: int,
     ) -> Cardapio:
-
         item = Cardapio.get_by_id(
             db=self.db,
-            idCardapio=idCardapio
+            idCardapio=idCardapio,
         )
 
         if item is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item do cardápio não encontrado."
+                detail="Item do cardápio não encontrado.",
             )
 
         return item
@@ -60,36 +63,36 @@ class CardapioService:
         self,
         idCardapio: int,
         dados: CardapioUpdate,
-        usuario: Usuario
+        usuario: Usuario | None = None,
     ) -> Cardapio:
-
         item = self.buscar_por_id(idCardapio)
 
-        if item.idRestaurante != usuario.idRestaurante:
+        if usuario and item.idRestaurante != usuario.idRestaurante:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item do cardápio não encontrado."
+                detail="Item do cardápio não encontrado.",
             )
 
         return item.update(
             db=self.db,
             nome=dados.nome,
-            preco=dados.preco,
-            categoria=dados.categoria
+            preco=float(dados.preco) if dados.preco is not None else None,
+            categoria=dados.categoria,
+            pathImage=dados.pathImage,
+            descricao=dados.descricao,
         )
 
     def excluir(
         self,
         idCardapio: int,
-        usuario: Usuario
+        usuario: Usuario | None = None,
     ) -> bool:
-
         item = self.buscar_por_id(idCardapio)
 
-        if item.idRestaurante != usuario.idRestaurante:
+        if usuario and item.idRestaurante != usuario.idRestaurante:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item do cardápio não encontrado."
+                detail="Item do cardápio não encontrado.",
             )
 
         # Exclusão lógica: desativa o item.

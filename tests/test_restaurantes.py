@@ -6,8 +6,10 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from src.app import app
 from src.database.connection import SessionLocal
 from src.schemas.RestauranteSchema import (
     RestauranteCreate,
@@ -19,26 +21,19 @@ from src.schemas.RestauranteSchema import (
 )
 from src.services.RestauranteService import RestauranteService
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-from fastapi.testclient import TestClient
-
-from src.app import app
+client = TestClient(app)
 
 
-def run_restaurante_tests():
-    print("=" * 70)
-    print("INICIANDO SUÍTE DE TESTES: CRUD DE RESTAURANTES & REGRAS DE NEGÓCIO")
-    print("=" * 70)
-
-    # -------------------------------------------------------------
-    # 1. TESTES UNITÁRIOS DE VALIDAÇÃO DE CNPJ, CEP E TELEFONE
-    # -------------------------------------------------------------
-    print("\n[1/4] Testes Unitários de Formatação e Validação de Campos:")
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL"
-)
+def _gerar_cnpj_valido(seed: int) -> str:
+    """Gera um CNPJ válido (formatado) a partir de uma semente numérica."""
+    base = f"{(seed % 90000000 + 10000000):08d}0001"
+    p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    s1 = sum(int(base[i]) * p1[i] for i in range(12))
+    d1 = 0 if s1 % 11 < 2 else 11 - (s1 % 11)
+    p2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    s2 = sum(int((base + str(d1))[i]) * p2[i] for i in range(13))
+    d2 = 0 if s2 % 11 < 2 else 11 - (s2 % 11)
+    return f"{base[:2]}.{base[2:5]}.{base[5:8]}/{base[8:12]}-{d1}{d2}"
 
 
 def run_restaurante_tests():
@@ -60,9 +55,6 @@ def run_restaurante_tests():
         "00000000000000",  # dígitos repetidos
         "11222333000180",  # dígito verificador incorreto
         "123456",          # tamanho insuficiente
-        "00000000000000",   # dígitos repetidos
-        "11222333000180",   # dígito verificador incorreto
-        "123456",           # tamanho insuficiente
     ]
     for c_inv in cnpjs_invalidos:
         try:
@@ -81,9 +73,6 @@ def run_restaurante_tests():
     print("   [PASS] Telefones fixo e móvel validados e formatados.")
 
     # -------------------------------------------------------------
-    # 2. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
-    # -------------------------------------------------------------
-    # -----------------------------------------------------------------
     # 2. TESTES DE VALIDAÇÃO DE SCHEMAS PYDANTIC
     # -------------------------------------------------------------
     print("\n[2/4] Testes de Schemas Pydantic:")
@@ -110,15 +99,7 @@ def run_restaurante_tests():
         ts = int(time.time())
 
         # 3.1 CREATE
-        # Gera CNPJ dinâmico válido
-        base_cnpj = f"{(ts % 90000000 + 10000000):08d}0001"
-        p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-        s1 = sum(int(base_cnpj[i]) * p1[i] for i in range(12))
-        d1 = 0 if s1 % 11 < 2 else 11 - (s1 % 11)
-        p2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-        s2 = sum(int((base_cnpj + str(d1))[i]) * p2[i] for i in range(13))
-        d2 = 0 if s2 % 11 < 2 else 11 - (s2 % 11)
-        cnpj_dinamico = f"{base_cnpj[:2]}.{base_cnpj[2:5]}.{base_cnpj[5:8]}/{base_cnpj[8:12]}-{d1}{d2}"
+        cnpj_dinamico = _gerar_cnpj_valido(ts)
 
         dados_restaurante = RestauranteCreate(
             nome=f"Restaurante Gourmet {ts}",
@@ -183,6 +164,10 @@ def run_restaurante_tests():
 
     finally:
         session.close()
+
+
+def test_restaurant():
+    ts = int(time.time() * 1000)
 
     # -----------------------------------------------------------------
     # 3. CREATE VIA API (POST /restaurantes)
@@ -278,7 +263,6 @@ def run_restaurante_tests():
     assert dados_anonimizado["status"] is False
     print("   [PASS] DELETE /restaurantes/{id}: Restaurante anonimizado e desativado com sucesso.")
 
-    # =================================================================
     print("\n" + "=" * 70)
     print("TODOS OS TESTES DE RESTAURANTE PASSARAM COM 100% DE SUCESSO!")
     print("=" * 70)

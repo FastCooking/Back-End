@@ -113,13 +113,15 @@ class Usuario(Base):
         except (ValueError, TypeError):
             return False
 
-    def delete(self, db: Session) -> bool:
-        """Remove o funcionário do banco de dados."""
-        self.nome = "USUARIO REMOVIDO"
-        self.cpf = "000.000.000-00"
-        self.email = "USUARIO REMOVIDO"
-        self.senha = "" #substituir por senha padrao placeholder
-            
+    def delete(self, db: Session) -> "Usuario":
+        """Anonimiza e desativa o funcionário preservando a unicidade das restrições de banco."""
+        codigo = secrets.token_hex(5)
+        self.nome = f"USUARIO REMOVIDO {self.idUsuario}"
+        self.cpf = f"000.000.{codigo[:3]}-{codigo[3:5]}"
+        self.email = f"removido_{codigo}@anonimizado.local"
+        self.senha = bcrypt.hashpw(secrets.token_bytes(16), bcrypt.gensalt()).decode("utf-8")
+        self.status = False
+
         db.commit()
         db.refresh(self)
         return self

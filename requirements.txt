@@ -1,4 +1,4 @@
-sqlalchemy==2.0.30
+sqlalchemy[postgresql_psycopg]==2.0.30
 fastapi==0.111.0
 pydantic==2.7.1
 uvicorn[standard]==0.30.0
@@ -11,6 +11,5 @@ ruff
 email-validator
 httpx
 python-jose[cryptography]
-httpx
 psycopg2-binary>=2.9.0
-sqlalchemy[postgresql_psycopg]==2.0.30
+pytest
