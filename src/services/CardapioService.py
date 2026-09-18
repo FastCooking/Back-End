@@ -7,6 +7,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from src.models.Cardapio import Cardapio
+from src.models.FichaTecnica import FichaTecnica
 from src.models.Usuario import Usuario
 from src.schemas.CardapioSchema import CardapioCreate, CardapioUpdate
 
@@ -17,7 +18,11 @@ class CardapioService:
         self.db = db
 
     async def salvar_e_comprimir_imagem(self, file: UploadFile) -> str:
-        if not file.content_type or not file.content_type.startswith("image/"):
+        filename_lower = (file.filename or "").lower()
+        ext_valida = any(filename_lower.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"])
+        is_image_type = bool(file.content_type and file.content_type.startswith("image/"))
+
+        if not (is_image_type or ext_valida):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="O arquivo enviado não é uma imagem válida.",
@@ -149,6 +154,10 @@ class CardapioService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Item do cardápio não encontrado.",
             )
+
+        # Remove as relações na FichaTecnica associadas a este item do cardápio (sem deletar o insumo no estoque)
+        if self.db:
+            self.db.query(FichaTecnica).filter(FichaTecnica.idCardapio == idCardapio).delete()
 
         # Remove o arquivo de imagem do disco se existir
         if item.pathImage:

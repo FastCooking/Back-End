@@ -58,16 +58,18 @@ async def criar_item(
     if "multipart/form-data" in content_type:
         form = await request.form()
         file_obj = form.get("file")
-        file = file_obj if isinstance(file_obj, UploadFile) else None
+        file = file_obj if hasattr(file_obj, "filename") and getattr(file_obj, "filename", None) else None
 
         path_image = form.get("pathImage")
-        if file and file.filename:
+        if file:
             path_image = await service.salvar_e_comprimir_imagem(file)
+        elif path_image == "":
+            path_image = None
 
         dados = CardapioCreate(
-            nome=form.get("nome"),
+            nome=str(form.get("nome")),
             preco=float(form.get("preco")),
-            categoria=form.get("categoria"),
+            categoria=str(form.get("categoria")),
             descricao=form.get("descricao") or None,
             pathImage=path_image or None,
             idRestaurante=int(form.get("idRestaurante")) if form.get("idRestaurante") else None,
@@ -132,11 +134,13 @@ async def editar_item(
     if "multipart/form-data" in content_type:
         form = await request.form()
         file_obj = form.get("file")
-        file = file_obj if isinstance(file_obj, UploadFile) else None
+        file = file_obj if hasattr(file_obj, "filename") and getattr(file_obj, "filename", None) else None
 
         path_image = form.get("pathImage")
-        if file and file.filename:
+        if file:
             path_image = await service.salvar_e_comprimir_imagem(file)
+        elif path_image == "":
+            path_image = None
 
         dados_dict = {}
         if "nome" in form and form["nome"]:
@@ -147,7 +151,7 @@ async def editar_item(
             dados_dict["categoria"] = form["categoria"]
         if "descricao" in form:
             dados_dict["descricao"] = form["descricao"] or None
-        if path_image is not None or "pathImage" in form or (file and file.filename):
+        if path_image is not None or "pathImage" in form or file:
             dados_dict["pathImage"] = path_image
 
         dados = CardapioUpdate(**dados_dict)
