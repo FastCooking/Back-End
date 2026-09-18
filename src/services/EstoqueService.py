@@ -1,7 +1,11 @@
 from fastapi import HTTPException, status
 
 from src.repositories.EstoqueRepository import EstoqueRepository
-from src.schemas.EstoqueSchema import EstoqueCreateDTO, EstoqueResponseDTO
+from src.schemas.EstoqueSchema import (
+    EstoqueCreateDTO,
+    EstoqueResponseDTO,
+    EstoqueUpdateDTO,
+)
 
 
 class EstoqueService:
@@ -65,3 +69,38 @@ class EstoqueService:
             )
             for item in insumos
         ]
+
+    def atualizar_insumo(self, idEstoque: int, payload: EstoqueUpdateDTO) -> EstoqueResponseDTO:
+        insumo = self.repository.update(
+            idEstoque=idEstoque,
+            nome=payload.nome,
+            quantidadeEmEstoque=payload.quantidadeEmEstoque,
+            quantidadeMinima=payload.quantidadeMinima,
+            idRestaurante=payload.idRestaurante,
+            unidadeMedida=payload.unidadeMedida,
+            pathImage=payload.pathImage,
+        )
+        if insumo is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Insumo não encontrado.",
+            )
+
+        return EstoqueResponseDTO(
+            idEstoque=insumo.idEstoque,
+            nome=insumo.nome,
+            quantidadeEmEstoque=float(insumo.quantidadeEstoque),
+            quantidadeMinima=float(insumo.quantidadeMinima),
+            idRestaurante=insumo.idRestaurante,
+            unidadeMedida=insumo.unidadeMedida,
+            pathImage=insumo.pathImage,
+        )
+
+    def excluir_insumo(self, idEstoque: int) -> bool:
+        sucesso = self.repository.delete(idEstoque)
+        if not sucesso:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Insumo não encontrado.",
+            )
+        return True
