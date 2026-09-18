@@ -1,88 +1,66 @@
-from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
-from src.repositories.EstoqueRepository import EstoqueRepository
-from src.schemas.EstoqueSchema import EstoqueCreateDTO, EstoqueResponseDTO, EstoqueUpdateDTO
+from src.models.Estoque import Estoque
 
 
-class EstoqueService:
-    def __init__(self, db):
-        self.repository = EstoqueRepository(db)
+class EstoqueRepository:
+    def __init__(self, db: Session):
+        self.db = db
 
-    def _to_response(self, insumo) -> EstoqueResponseDTO:
-        return EstoqueResponseDTO(
-            idEstoque=insumo.idEstoque,
-            nome=insumo.nome,
-            quantidadeEmEstoque=float(insumo.quantidadeEstoque),
-            quantidadeMinima=float(insumo.quantidadeMinima),
-            idRestaurante=insumo.idRestaurante,
-            unidadeMedida=insumo.unidadeMedida,
-            pathImage=insumo.pathImage,
-        )
-
-    def criar_insumo(self, payload: EstoqueCreateDTO) -> EstoqueResponseDTO:
-        try:
-            insumo = self.repository.create(
-                nome=payload.nome,
-                quantidadeEmEstoque=payload.quantidadeEmEstoque,
-                quantidadeMinima=payload.quantidadeMinima,
-                idRestaurante=payload.idRestaurante,
-                unidadeMedida=payload.unidadeMedida,
-                pathImage=payload.pathImage,
-            )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Erro ao criar insumo: {exc!s}",
-            ) from exc
-
-        return self._to_response(insumo)
-
-    def buscar_por_id(self, idEstoque: int) -> EstoqueResponseDTO:
-        insumo = self.repository.get_by_id(idEstoque)
-        if insumo is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Insumo não encontrado.",
-            )
-
-        return self._to_response(insumo)
-
-    def listar_insumos(self) -> list[EstoqueResponseDTO]:
-        insumos = self.repository.list_all()
-        return [self._to_response(item) for item in insumos]
-
-    def atualizar_insumo(
+    def create(
         self,
-        idEstoque: int,
-        payload: EstoqueCreateDTO | EstoqueUpdateDTO,
-    ) -> EstoqueResponseDTO:
-        insumo = self.repository.get_by_id(idEstoque)
+        nome: str,
+        quantidadeEmEstoque: float,
+        quantidadeMinima: float,
+        idRestaurante: int = 1,
+        unidadeMedida: str = "UN",
+        pathImage: str | None = None,
+    ) -> Estoque:
+        insumo = Estoque(
+            idRestaurante=idRestaurante,
+            nome=nome,
+            unidadeMedida=unidadeMedida,
+            pathImage=pathImage,
+            quantidadeEstoque=quantidadeEmEstoque,
+            quantidadeMinima=quantidadeMinima,
+        )
+        self.db.add(insumo)
+        self.db.commit()
+        self.db.refresh(insumo)
+        return insumo
+
+    def get_by_id(self, idEstoque: int) -> Estoque | None:
+        return self.db.query(Estoque).filter(Estoque.idEstoque == idEstoque).first()
+
+    def list_all(self) -> list[Estoque]:
+        return self.db.query(Estoque).order_by(Estoque.nome.asc()).all()
+
+    def update(self, idEstoque: int, **kwargs) -> Estoque | None:
+        insumo = self.get_by_id(idEstoque)
         if insumo is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Insumo não encontrado.",
-            )
+            return None
 
-        dados = payload.model_dump(exclude_unset=True)
-        if not dados:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Nenhum campo foi informado para atualização.",
-            )
+        field_mapping = {
+            "quantidadeEmEstoque": "quantidadeEstoque",
+            "quantidadeMinima": "quantidadeMinima",
+            "idRestaurante": "idRestaurante",
+            "nome": "nome",
+            "unidadeMedida": "unidadeMedida",
+            "pathImage": "pathImage",
+        }
+        for field, value in kwargs.items():
+            if value is not None:
+                setattr(insumo, field_mapping[field], value)
 
-        insumo_atualizado = self.repository.update(idEstoque, **dados)
-        if insumo_atualizado is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Insumo não encontrado.",
-            )
+        self.db.commit()
+        self.db.refresh(insumo)
+        return insumo
 
-        return self._to_response(insumo_atualizado)
+    def delete(self, idEstoque: int) -> bool:
+        insumo = self.get_by_id(idEstoque)
+        if insumo is None:
+            return False
 
-    def excluir_insumo(self, idEstoque: int) -> bool:
-        if not self.repository.delete(idEstoque):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Insumo não encontrado.",
-            )
+        self.db.delete(insumo)
+        self.db.commit()
         return True
