@@ -95,7 +95,7 @@ def excluir_insumo_por_id(idEstoque: int, db: Session = Depends(get_db)):
     try:
         service = EstoqueService(db)
         service.excluir_insumo(idEstoque)
-        return None
+        return
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover

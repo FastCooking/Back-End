@@ -1,7 +1,11 @@
 from fastapi import HTTPException, status
 
 from src.repositories.EstoqueRepository import EstoqueRepository
-from src.schemas.EstoqueSchema import EstoqueCreateDTO, EstoqueResponseDTO, EstoqueUpdateDTO
+from src.schemas.EstoqueSchema import (
+    EstoqueCreateDTO,
+    EstoqueResponseDTO,
+    EstoqueUpdateDTO,
+)
 
 
 class EstoqueService:
