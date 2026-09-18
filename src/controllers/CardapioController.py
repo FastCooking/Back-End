@@ -166,6 +166,26 @@ async def editar_item(
     )
 
 
+@router.post(
+    "/{idCardapio}",
+    response_model=CardapioResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Editar item do cardápio (alias POST)",
+)
+async def editar_item_post(
+    idCardapio: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(get_optional_user),
+):
+    return await editar_item(
+        idCardapio=idCardapio,
+        request=request,
+        db=db,
+        usuario=usuario,
+    )
+
+
 @router.delete(
     "/{idCardapio}",
     status_code=status.HTTP_200_OK,
