@@ -1,6 +1,6 @@
 import os
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -47,12 +47,34 @@ router = APIRouter(
     status_code=status.HTTP_201_CREATED,
     summary="Criar item do cardápio",
 )
-def criar_item(
-    dados: CardapioCreate,
+async def criar_item(
+    request: Request,
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(get_optional_user),
 ):
     service = CardapioService(db)
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file_obj = form.get("file")
+        file = file_obj if isinstance(file_obj, UploadFile) else None
+
+        path_image = form.get("pathImage")
+        if file and file.filename:
+            path_image = await service.salvar_e_comprimir_imagem(file)
+
+        dados = CardapioCreate(
+            nome=form.get("nome"),
+            preco=float(form.get("preco")),
+            categoria=form.get("categoria"),
+            descricao=form.get("descricao") or None,
+            pathImage=path_image or None,
+            idRestaurante=int(form.get("idRestaurante")) if form.get("idRestaurante") else None,
+        )
+    else:
+        body = await request.json()
+        dados = CardapioCreate(**body)
 
     return service.criar(
         dados=dados,
@@ -98,13 +120,40 @@ def buscar_item(
     status_code=status.HTTP_200_OK,
     summary="Editar item do cardápio",
 )
-def editar_item(
+async def editar_item(
     idCardapio: int,
-    dados: CardapioUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(get_optional_user),
 ):
     service = CardapioService(db)
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file_obj = form.get("file")
+        file = file_obj if isinstance(file_obj, UploadFile) else None
+
+        path_image = form.get("pathImage")
+        if file and file.filename:
+            path_image = await service.salvar_e_comprimir_imagem(file)
+
+        dados_dict = {}
+        if "nome" in form and form["nome"]:
+            dados_dict["nome"] = form["nome"]
+        if "preco" in form and form["preco"]:
+            dados_dict["preco"] = float(form["preco"])
+        if "categoria" in form and form["categoria"]:
+            dados_dict["categoria"] = form["categoria"]
+        if "descricao" in form:
+            dados_dict["descricao"] = form["descricao"] or None
+        if path_image is not None or "pathImage" in form or (file and file.filename):
+            dados_dict["pathImage"] = path_image
+
+        dados = CardapioUpdate(**dados_dict)
+    else:
+        body = await request.json()
+        dados = CardapioUpdate(**body)
 
     return service.editar(
         idCardapio=idCardapio,

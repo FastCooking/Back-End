@@ -23,11 +23,18 @@ from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
 from src.database.connection import test_connection
 
+from fastapi.staticfiles import StaticFiles
+
+UPLOADS_DIR = ROOT_DIR / "uploads"
+os.makedirs(UPLOADS_DIR / "cardapio", exist_ok=True)
+
 app = FastAPI(
     title="FastCooking API",
     description="API do sistema FastCooking para gerenciamento de restaurantes, pedidos, cardápio e estoque.",
     version="1.0.0",
 )
+
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

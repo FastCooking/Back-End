@@ -1,4 +1,9 @@
-from fastapi import HTTPException, status
+import io
+import os
+import uuid
+from pathlib import Path
+from PIL import Image
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from src.models.Cardapio import Cardapio
@@ -8,8 +13,54 @@ from src.schemas.CardapioSchema import CardapioCreate, CardapioUpdate
 
 class CardapioService:
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session | None = None):
         self.db = db
+
+    async def salvar_e_comprimir_imagem(self, file: UploadFile) -> str:
+        if not file.content_type or not file.content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="O arquivo enviado não é uma imagem válida.",
+            )
+
+        try:
+            conteudo = await file.read()
+            img = Image.open(io.BytesIO(conteudo))
+
+            orig_w, orig_h = img.size
+            new_w = max(1, int(orig_w * 0.60))
+            new_h = max(1, int(orig_h * 0.60))
+
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+
+            img_comprimida = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+            filename = f"cardapio_{uuid.uuid4().hex[:12]}.jpg"
+            uploads_dir = Path(__file__).resolve().parents[2] / "uploads" / "cardapio"
+            os.makedirs(uploads_dir, exist_ok=True)
+
+            caminho_absoluto = uploads_dir / filename
+            img_comprimida.save(caminho_absoluto, "JPEG", quality=85)
+
+            return f"/uploads/cardapio/{filename}"
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao processar imagem: {exc!s}",
+            ) from exc
+
+    def _remover_arquivo_imagem(self, path_image: str | None) -> None:
+        if not path_image or not path_image.startswith("/uploads/"):
+            return
+        try:
+            relative_path = path_image.lstrip("/")
+            uploads_dir = Path(__file__).resolve().parents[2]
+            caminho_arquivo = uploads_dir / relative_path
+            if os.path.exists(caminho_arquivo):
+                os.remove(caminho_arquivo)
+        except Exception as err:
+            print(f"[AVISO] Não foi possível remover foto antiga: {err}")
 
     def criar(
         self,
@@ -73,6 +124,10 @@ class CardapioService:
                 detail="Item do cardápio não encontrado.",
             )
 
+        # Se houver uma nova foto e ela for diferente da antiga, apaga a foto antiga do servidor
+        if dados.pathImage is not None and dados.pathImage != item.pathImage:
+            self._remover_arquivo_imagem(item.pathImage)
+
         return item.update(
             db=self.db,
             nome=dados.nome,
@@ -94,6 +149,10 @@ class CardapioService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Item do cardápio não encontrado.",
             )
+
+        # Remove o arquivo de imagem do disco se existir
+        if item.pathImage:
+            self._remover_arquivo_imagem(item.pathImage)
 
         # Exclusão lógica: desativa o item.
         return item.disable(self.db)
