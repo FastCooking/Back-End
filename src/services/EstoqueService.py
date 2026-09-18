@@ -1,67 +1,105 @@
-from fastapi import HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-from src.repositories.EstoqueRepository import EstoqueRepository
-from src.schemas.EstoqueSchema import EstoqueCreateDTO, EstoqueResponseDTO
+from src.database.connection import get_db
+from src.schemas.EstoqueSchema import (
+    EstoqueCreateDTO,
+    EstoqueResponseDTO,
+    EstoqueUpdateDTO,
+)
+from src.services.EstoqueService import EstoqueService
+
+router = APIRouter(prefix="/insumos", tags=["insumos"])
 
 
-class EstoqueService:
-    def __init__(self, db):
-        self.repository = EstoqueRepository(db)
+@router.post("", response_model=EstoqueResponseDTO, status_code=status.HTTP_201_CREATED)
+def criar_insumo(payload: EstoqueCreateDTO, db: Session = Depends(get_db)):
+    try:
+        service = EstoqueService(db)
+        return service.criar_insumo(payload)
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro interno: {exc!s}",
+        ) from exc
 
-    def criar_insumo(self, payload: EstoqueCreateDTO) -> EstoqueResponseDTO:
-        try:
-            insumo = self.repository.create(
-                nome=payload.nome,
-                quantidadeEmEstoque=payload.quantidadeEmEstoque,
-                quantidadeMinima=payload.quantidadeMinima,
-                idRestaurante=payload.idRestaurante,
-                unidadeMedida=payload.unidadeMedida,
-                pathImage=payload.pathImage,
-            )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Erro ao criar insumo: {exc!s}",
-            ) from exc
 
-        return EstoqueResponseDTO(
-            idEstoque=insumo.idEstoque,
-            nome=insumo.nome,
-            quantidadeEmEstoque=float(insumo.quantidadeEstoque),
-            quantidadeMinima=float(insumo.quantidadeMinima),
-            idRestaurante=insumo.idRestaurante,
-            unidadeMedida=insumo.unidadeMedida,
-            pathImage=insumo.pathImage,
-        )
+@router.get("/{idEstoque}", response_model=EstoqueResponseDTO)
+def buscar_insumo_por_id(idEstoque: int, db: Session = Depends(get_db)):
+    try:
+        service = EstoqueService(db)
+        return service.buscar_por_id(idEstoque)
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro interno: {exc!s}",
+        ) from exc
 
-    def buscar_por_id(self, idEstoque: int) -> EstoqueResponseDTO:
-        insumo = self.repository.get_by_id(idEstoque)
-        if insumo is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Insumo não encontrado.",
-            )
 
-        return EstoqueResponseDTO(
-            idEstoque=insumo.idEstoque,
-            nome=insumo.nome,
-            quantidadeEmEstoque=float(insumo.quantidadeEstoque),
-            quantidadeMinima=float(insumo.quantidadeMinima),
-            idRestaurante=insumo.idRestaurante,
-            unidadeMedida=insumo.unidadeMedida,
-        )
+@router.get("", response_model=list[EstoqueResponseDTO])
+def listar_insumos(db: Session = Depends(get_db)):
+    try:
+        service = EstoqueService(db)
+        return service.listar_insumos()
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro interno: {exc!s}",
+        ) from exc
 
-    def listar_insumos(self) -> list[EstoqueResponseDTO]:
-        insumos = self.repository.list_all()
-        return [
-            EstoqueResponseDTO(
-                idEstoque=item.idEstoque,
-                nome=item.nome,
-                quantidadeEmEstoque=float(item.quantidadeEstoque),
-                quantidadeMinima=float(item.quantidadeMinima),
-                idRestaurante=item.idRestaurante,
-                unidadeMedida=item.unidadeMedida,
-                pathImage=item.pathImage,
-            )
-            for item in insumos
-        ]
+
+@router.put("/{idEstoque}", response_model=EstoqueResponseDTO, status_code=status.HTTP_200_OK)
+def atualizar_insumo_por_id(
+    idEstoque: int,
+    payload: EstoqueCreateDTO,
+    db: Session = Depends(get_db),
+):
+    try:
+        service = EstoqueService(db)
+        return service.atualizar_insumo(idEstoque, payload)
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro interno: {exc!s}",
+        ) from exc
+
+
+@router.patch("/{idEstoque}", response_model=EstoqueResponseDTO, status_code=status.HTTP_200_OK)
+def atualizar_parcial_insumo_por_id(
+    idEstoque: int,
+    payload: EstoqueUpdateDTO,
+    db: Session = Depends(get_db),
+):
+    try:
+        service = EstoqueService(db)
+        return service.atualizar_insumo(idEstoque, payload)
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro interno: {exc!s}",
+        ) from exc
+
+
+@router.delete("/{idEstoque}", status_code=status.HTTP_204_NO_CONTENT)
+def excluir_insumo_por_id(idEstoque: int, db: Session = Depends(get_db)):
+    try:
+        service = EstoqueService(db)
+        service.excluir_insumo(idEstoque)
+        return None
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro interno: {exc!s}",
+        ) from exc
