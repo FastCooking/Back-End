@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from src.database.connection import get_db
 from src.schemas.RestauranteSchema import (
+    RestauranteComUsuarioCreate,
+    RestauranteComUsuarioResponse,
     RestauranteCreate,
     RestauranteResponse,
     RestauranteStatusUpdate,
@@ -11,6 +13,22 @@ from src.schemas.RestauranteSchema import (
 from src.services.RestauranteService import RestauranteService
 
 router = APIRouter(prefix="/restaurantes", tags=["Restaurantes"])
+
+
+@router.post(
+    "/com-usuario",
+    response_model=RestauranteComUsuarioResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Criar novo restaurante com usuário inicial/gerente",
+    description="Cadastra um restaurante e seu usuário/gerente inicial dentro de uma única transação atômica.",
+)
+def criar_restaurante_com_usuario(
+    dados: RestauranteComUsuarioCreate,
+    db: Session = Depends(get_db),
+) -> RestauranteComUsuarioResponse:
+    service = RestauranteService(db)
+    restaurante, usuario = service.create_with_user(dados)
+    return RestauranteComUsuarioResponse(restaurante=restaurante, usuario=usuario)
 
 
 @router.post(

@@ -33,7 +33,7 @@ class Usuario(Base):
         return f"<Usuario(id={self.idUsuario}, nome='{self.nome}', funcao='{self.funcao}')>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, nome: str, cpf: str, email: str, senha: str, funcao: str) -> "Usuario":
+    def create(cls, db: Session, idRestaurante: int, nome: str, cpf: str, email: str, senha: str, funcao: str, commit: bool = True) -> "Usuario":
         """Cria e persiste um novo funcionário/usuário."""
         usuario = cls(
             idRestaurante=idRestaurante,
@@ -45,8 +45,9 @@ class Usuario(Base):
         )
         
         db.add(usuario)
-        db.commit()
-        db.refresh(usuario)
+        if commit:
+            db.commit()
+            db.refresh(usuario)
         
         return usuario
 
@@ -113,7 +114,7 @@ class Usuario(Base):
         except (ValueError, TypeError):
             return False
 
-    def delete(self, db: Session) -> "Usuario":
+    def delete(self, db: Session, commit: bool = True) -> "Usuario":
         """Anonimiza e desativa o funcionário preservando a unicidade das restrições de banco."""
         codigo = secrets.token_hex(5)
         self.nome = f"USUARIO REMOVIDO {self.idUsuario}"
@@ -122,6 +123,7 @@ class Usuario(Base):
         self.senha = bcrypt.hashpw(secrets.token_bytes(16), bcrypt.gensalt()).decode("utf-8")
         self.status = False
 
-        db.commit()
-        db.refresh(self)
+        if commit:
+            db.commit()
+            db.refresh(self)
         return self

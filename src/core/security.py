@@ -42,7 +42,11 @@ def get_current_user(
         raise excecao_credenciais
 
     usuario = Usuario.get_by_id(db, int(idUsuario))
-    if usuario is None or not usuario.status:
+    if (
+        usuario is None
+        or not usuario.status
+        or (usuario.restaurante and not usuario.restaurante.status)
+    ):
         raise excecao_credenciais
 
     return usuario

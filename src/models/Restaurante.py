@@ -29,7 +29,7 @@ class Restaurante(Base):
         return f"<Restaurante(id={self.idRestaurante}, nome='{self.nome}')>"
 
     @classmethod
-    def create(cls, db: Session, nome: str, cnpj: str, telefone: str, email: str, cep: str, status: bool) -> "Restaurante":
+    def create(cls, db: Session, nome: str, cnpj: str, telefone: str, email: str, cep: str, status: bool, commit: bool = True) -> "Restaurante":
         """Cria e persiste um novo restaurante."""
         restaurante = cls(
             nome = nome,
@@ -40,8 +40,9 @@ class Restaurante(Base):
             status = status
         )
         db.add(restaurante)
-        db.commit()
-        db.refresh(restaurante)
+        if commit:
+            db.commit()
+            db.refresh(restaurante)
         return restaurante
 
     @classmethod
@@ -97,7 +98,7 @@ class Restaurante(Base):
         db.refresh(self)
         return self
 
-    def delete(self, db: Session) -> "Restaurante":
+    def delete(self, db: Session, commit: bool = True) -> "Restaurante":
         """Anonimiza e desativa o restaurante preservando a unicidade das restrições de banco."""
         codigo = secrets.token_hex(5)
         self.nome = f"RESTAURANTE REMOVIDO {self.idRestaurante}"
@@ -107,6 +108,7 @@ class Restaurante(Base):
         self.cep = "00000-000"
         self.status = False
 
-        db.commit()
-        db.refresh(self)
+        if commit:
+            db.commit()
+            db.refresh(self)
         return self
