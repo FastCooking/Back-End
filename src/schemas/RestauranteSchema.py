@@ -1,5 +1,5 @@
 import re
-from typing import TYPE_CHECKING
+import uuid
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -136,7 +136,7 @@ class RestauranteStatusUpdate(BaseModel):
 
 
 class RestauranteResponse(BaseModel):
-    idRestaurante: int
+    idRestaurante: uuid.UUID
     nome: str
     cnpj: str
     telefone: str

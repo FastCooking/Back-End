@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -122,7 +124,7 @@ class RestauranteService:
             self.db.rollback()
             raise
 
-    def get_by_id(self, idRestaurante: int) -> Restaurante:
+    def get_by_id(self, idRestaurante: uuid.UUID | str) -> Restaurante:
         """Busca um restaurante pelo ID ou levanta 404."""
         restaurante = Restaurante.get_by_id(self.db, idRestaurante)
         if not restaurante:
@@ -148,13 +150,13 @@ class RestauranteService:
             )
 
         return (
-            query.order_by(Restaurante.idRestaurante.asc())
+            query.order_by(Restaurante.nome.asc())
             .offset(skip)
             .limit(limit)
             .all()
         )
 
-    def update(self, idRestaurante: int, data: RestauranteUpdate) -> Restaurante:
+    def update(self, idRestaurante: uuid.UUID | str, data: RestauranteUpdate) -> Restaurante:
         """Atualiza os dados de um restaurante com validações."""
         restaurante = self.get_by_id(idRestaurante)
 
@@ -200,7 +202,7 @@ class RestauranteService:
             status=data.status,
         )
 
-    def change_status(self, idRestaurante: int, novo_status: bool) -> Restaurante:
+    def change_status(self, idRestaurante: uuid.UUID | str, novo_status: bool) -> Restaurante:
         """Altera o status do restaurante via métodos able/disable do Model."""
         restaurante = self.get_by_id(idRestaurante)
         if novo_status:
@@ -209,7 +211,7 @@ class RestauranteService:
             restaurante.disable(self.db)
         return restaurante
 
-    def delete(self, idRestaurante: int) -> bool:
+    def delete(self, idRestaurante: uuid.UUID | str) -> bool:
         """Anonimiza e desativa o restaurante e todos os seus usuários dependentes em cascata de forma transacional."""
         restaurante = self.get_by_id(idRestaurante)
 

@@ -1,4 +1,5 @@
 import os
+import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -29,7 +30,7 @@ def get_optional_user(
         payload = jwt.decode(credenciais.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         id_usuario = payload.get("sub")
         if id_usuario:
-            return Usuario.get_by_id(db, int(id_usuario))
+            return Usuario.get_by_id(db, uuid.UUID(str(id_usuario)))
     except (JWTError, ValueError):
         return None
     return None
@@ -67,7 +68,7 @@ def criar_item(
     summary="Listar itens do cardápio",
 )
 def listar_itens(
-    idRestaurante: int = Query(default=1),
+    idRestaurante: uuid.UUID = Query(..., description="ID do Restaurante"),
     db: Session = Depends(get_db),
 ):
     service = CardapioService(db)
@@ -84,7 +85,7 @@ def listar_itens(
     summary="Buscar item do cardápio",
 )
 def buscar_item(
-    idCardapio: int,
+    idCardapio: uuid.UUID,
     db: Session = Depends(get_db),
 ):
     service = CardapioService(db)
@@ -99,7 +100,7 @@ def buscar_item(
     summary="Editar item do cardápio",
 )
 def editar_item(
-    idCardapio: int,
+    idCardapio: uuid.UUID,
     dados: CardapioUpdate,
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(get_optional_user),
@@ -119,7 +120,7 @@ def editar_item(
     summary="Desativar item do cardápio",
 )
 def excluir_item(
-    idCardapio: int,
+    idCardapio: uuid.UUID,
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(get_optional_user),
 ):

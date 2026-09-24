@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import HTTPException, status
 
 from src.models.Cardapio import Cardapio
@@ -53,7 +55,7 @@ class FichaTecnicaService:
                 detail="Item de cardápio não encontrado.",
             )
 
-        seen: set[int] = set()
+        seen: set[uuid.UUID] = set()
         for item in payload.insumos:
             insumo = (
                 self.db.query(Estoque)
@@ -88,7 +90,7 @@ class FichaTecnicaService:
 
         return self._to_response(fichas)
 
-    def buscar_por_id(self, idFichaTecnica: int) -> FichaTecnicaResponseDTO:
+    def buscar_por_id(self, idFichaTecnica: uuid.UUID | str) -> FichaTecnicaResponseDTO:
         ficha = self.repository.get_by_id(idFichaTecnica)
         if ficha is None:
             raise HTTPException(
@@ -97,7 +99,7 @@ class FichaTecnicaService:
             )
         return self._to_response([ficha])
 
-    def listar_por_cardapio(self, idCardapio: int) -> list[FichaTecnicaResponseDTO]:
+    def listar_por_cardapio(self, idCardapio: uuid.UUID | str) -> list[FichaTecnicaResponseDTO]:
         cardapio = (
             self.db.query(Cardapio).filter(Cardapio.idCardapio == idCardapio).first()
         )
@@ -114,7 +116,7 @@ class FichaTecnicaService:
         return [self._to_response([ficha]) for ficha in fichas]
 
     def buscar_ficha_completa_por_cardapio(
-        self, idCardapio: int
+        self, idCardapio: uuid.UUID | str
     ) -> FichaTecnicaCompletaResponseDTO:
         cardapio = (
             self.db.query(Cardapio).filter(Cardapio.idCardapio == idCardapio).first()
@@ -139,22 +141,24 @@ class FichaTecnicaService:
                 insumos=[],
             )
 
-        insumos = []
+        insumos_cardapio = []
         for ficha in fichas:
-            insumo = (
+            insumo_db = (
                 self.db.query(Estoque)
                 .filter(Estoque.idEstoque == ficha.idEstoque)
                 .first()
             )
-            if insumo is not None:
-                insumos.append(
-                    CardapioFichaTecnicaItemDTO(
-                        idEstoque=insumo.idEstoque,
-                        nome=insumo.nome,
-                        quantidadeNecessaria=float(ficha.quantidadeNecessaria),
-                        unidadeMedida=insumo.unidadeMedida,
-                    )
+            nome_insumo = insumo_db.nome if insumo_db else "Insumo desconhecido"
+            unidade_medida = insumo_db.unidadeMedida if insumo_db else "UN"
+
+            insumos_cardapio.append(
+                CardapioFichaTecnicaItemDTO(
+                    idEstoque=ficha.idEstoque,
+                    nome=nome_insumo,
+                    quantidadeNecessaria=float(ficha.quantidadeNecessaria),
+                    unidadeMedida=unidade_medida,
                 )
+            )
 
         return FichaTecnicaCompletaResponseDTO(
             cardapio=CardapioResumoDTO(
@@ -165,5 +169,5 @@ class FichaTecnicaService:
                 categoria=cardapio.categoria,
                 status=cardapio.status,
             ),
-            insumos=insumos,
+            insumos=insumos_cardapio,
         )

@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -16,7 +18,12 @@ class CardapioService:
         dados: CardapioCreate,
         usuario: Usuario | None = None,
     ) -> Cardapio:
-        id_restaurante = dados.idRestaurante or (usuario.idRestaurante if usuario else 1)
+        id_restaurante = dados.idRestaurante or (usuario.idRestaurante if usuario else None)
+        if not id_restaurante:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="idRestaurante é obrigatório para cadastrar um item no cardápio.",
+            )
 
         item = Cardapio.create(
             db=self.db,
@@ -32,11 +39,8 @@ class CardapioService:
 
     def listar(
         self,
-        idRestaurante: int | None = None,
+        idRestaurante: uuid.UUID | str,
     ) -> list[Cardapio]:
-        if idRestaurante is None:
-            idRestaurante = 1
-
         return Cardapio.get_all_by_restaurante(
             db=self.db,
             idRestaurante=idRestaurante,
@@ -44,7 +48,7 @@ class CardapioService:
 
     def buscar_por_id(
         self,
-        idCardapio: int,
+        idCardapio: uuid.UUID | str,
     ) -> Cardapio:
         item = Cardapio.get_by_id(
             db=self.db,
@@ -61,7 +65,7 @@ class CardapioService:
 
     def editar(
         self,
-        idCardapio: int,
+        idCardapio: uuid.UUID | str,
         dados: CardapioUpdate,
         usuario: Usuario | None = None,
     ) -> Cardapio:
@@ -84,7 +88,7 @@ class CardapioService:
 
     def excluir(
         self,
-        idCardapio: int,
+        idCardapio: uuid.UUID | str,
         usuario: Usuario | None = None,
     ) -> bool:
         item = self.buscar_por_id(idCardapio)
