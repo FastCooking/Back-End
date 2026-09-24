@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
@@ -39,7 +41,7 @@ def criar_usuario(
     description="Retorna a lista de usuários cadastrados com opções de filtro e paginação.",
 )
 def listar_usuarios(
-    idRestaurante: int | None = Query(
+    idRestaurante: uuid.UUID | None = Query(
         default=None, description="Filtrar por Restaurante"
     ),
     funcao: FuncaoUsuario | None = Query(
@@ -76,7 +78,7 @@ def listar_usuarios(
     description="Retorna os dados cadastrais de um usuário específico.",
 )
 def obter_usuario_por_id(
-    idUsuario: int,
+    idUsuario: uuid.UUID,
     db: Session = Depends(get_db),
 ) -> UsuarioResponse:
     service = UsuarioService(db)
@@ -91,7 +93,7 @@ def obter_usuario_por_id(
     description="Atualiza os dados de um usuário existente com validações.",
 )
 def atualizar_usuario(
-    idUsuario: int,
+    idUsuario: uuid.UUID,
     dados: UsuarioUpdate,
     db: Session = Depends(get_db),
 ) -> UsuarioResponse:
@@ -107,7 +109,7 @@ def atualizar_usuario(
     description="Atualiza campos específicos de um usuário.",
 )
 def atualizar_parcial_usuario(
-    idUsuario: int,
+    idUsuario: uuid.UUID,
     dados: UsuarioUpdate,
     db: Session = Depends(get_db),
 ) -> UsuarioResponse:
@@ -123,7 +125,7 @@ def atualizar_parcial_usuario(
     description="Ativa ou desativa um usuário no sistema.",
 )
 def alterar_status_usuario(
-    idUsuario: int,
+    idUsuario: uuid.UUID,
     dados: UsuarioStatusUpdate,
     db: Session = Depends(get_db),
 ) -> UsuarioResponse:
@@ -138,7 +140,7 @@ def alterar_status_usuario(
     description="Remove o usuário através do método de exclusão do Model.",
 )
 def deletar_usuario(
-    idUsuario: int,
+    idUsuario: uuid.UUID,
     db: Session = Depends(get_db),
 ):
     service = UsuarioService(db)

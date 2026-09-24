@@ -1,6 +1,8 @@
+import uuid
 from typing import Optional
 
-from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
 from src.database.connection import Base
@@ -9,10 +11,19 @@ from src.database.connection import Base
 class Mesa(Base):
     __tablename__ = "Mesa"
 
-    idMesa : int = Column(Integer, primary_key=True, autoincrement=True)
-    idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    numero : int = Column(Integer, nullable=False)
-    status : str = Column(String(20), nullable=False, default="Disponivel")
+    idMesa: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    idRestaurante: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"),
+        nullable=False,
+    )
+    numero: int = Column(Integer, nullable=False)
+    status: str = Column(String(20), nullable=False, default="Disponivel")
 
     __table_args__ = (
         UniqueConstraint("idRestaurante", "numero", name="uq_restaurante_mesa"),
@@ -26,12 +37,14 @@ class Mesa(Base):
         return f"<Mesa(id={self.idMesa}, numero={self.numero}, status='{self.status}')>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, numero: int, status: str = "Disponivel") -> "Mesa":
+    def create(
+        cls, db: Session, idRestaurante: uuid.UUID | str, numero: int, status: str = "Disponivel"
+    ) -> "Mesa":
         """Cria e persiste uma nova mesa."""
         mesa = cls(
             idRestaurante=idRestaurante,
             numero=numero,
-            status=status
+            status=status,
         )
         
         db.add(mesa)
@@ -40,20 +53,22 @@ class Mesa(Base):
         return mesa
 
     @classmethod
-    def get_by_id(cls, db: Session, idMesa: int) -> Optional["Mesa"]:
+    def get_by_id(cls, db: Session, idMesa: uuid.UUID | str) -> Optional["Mesa"]:
         """Busca mesa pelo ID."""
         return db.query(cls).filter(cls.idMesa == idMesa).first()
 
     @classmethod
-    def get_by_number(cls, db: Session, idRestaurante: int, numero: int) -> Optional["Mesa"]:
+    def get_by_number(cls, db: Session, idRestaurante: uuid.UUID | str, numero: int) -> Optional["Mesa"]:
         """Busca uma mesa específica pelo seu número dentro do restaurante."""
         return db.query(cls).filter(
             cls.idRestaurante == idRestaurante,
-            cls.numero == numero
+            cls.numero == numero,
         ).first()
 
     @classmethod
-    def get_all_by_restaurant(cls, db: Session, idRestaurante: int, status: str | None = None) -> list["Mesa"]:
+    def get_all_by_restaurant(
+        cls, db: Session, idRestaurante: uuid.UUID | str, status: str | None = None
+    ) -> list["Mesa"]:
         """Lista todas as mesas do restaurante, com filtro opcional por status ('Disponivel' / 'Indisponivel')."""
         query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
         if status:

@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
@@ -83,7 +85,7 @@ def listar_restaurantes(
     description="Retorna os dados cadastrais de um restaurante específico.",
 )
 def obter_restaurante_por_id(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     db: Session = Depends(get_db),
 ) -> RestauranteResponse:
     service = RestauranteService(db)
@@ -98,7 +100,7 @@ def obter_restaurante_por_id(
     description="Atualiza os dados de um restaurante existente com validações.",
 )
 def atualizar_restaurante(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     dados: RestauranteUpdate,
     db: Session = Depends(get_db),
 ) -> RestauranteResponse:
@@ -114,7 +116,7 @@ def atualizar_restaurante(
     description="Atualiza campos específicos de um restaurante.",
 )
 def atualizar_parcial_restaurante(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     dados: RestauranteUpdate,
     db: Session = Depends(get_db),
 ) -> RestauranteResponse:
@@ -130,7 +132,7 @@ def atualizar_parcial_restaurante(
     description="Ativa ou desativa um restaurante no sistema.",
 )
 def alterar_status_restaurante(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     dados: RestauranteStatusUpdate,
     db: Session = Depends(get_db),
 ) -> RestauranteResponse:
@@ -145,7 +147,7 @@ def alterar_status_restaurante(
     description="Desativa o restaurante no banco de dados.",
 )
 def deletar_restaurante(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     db: Session = Depends(get_db),
 ):
     service = RestauranteService(db)

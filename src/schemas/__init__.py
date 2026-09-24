@@ -19,14 +19,14 @@ from src.schemas.UsuarioSchema import (
 )
 
 __all__ = [
+    "RestauranteComUsuarioCreate",
+    "RestauranteComUsuarioResponse",
     "RestauranteCreate",
     "RestauranteResponse",
     "RestauranteStatusUpdate",
     "RestauranteUpdate",
-    "RestauranteComUsuarioCreate",
-    "RestauranteComUsuarioResponse",
-    "UsuarioInicialCreate",
     "UsuarioCreate",
+    "UsuarioInicialCreate",
     "UsuarioResponse",
     "UsuarioStatusUpdate",
     "UsuarioUpdate",

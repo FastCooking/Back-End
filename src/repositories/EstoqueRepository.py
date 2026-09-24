@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy.orm import Session
 
 from src.models.Estoque import Estoque
@@ -12,7 +14,7 @@ class EstoqueRepository:
         nome: str,
         quantidadeEmEstoque: float,
         quantidadeMinima: float,
-        idRestaurante: int = 1,
+        idRestaurante: uuid.UUID | str,
         unidadeMedida: str = "UN",
         pathImage: str | None = None,
     ) -> Estoque:
@@ -29,8 +31,11 @@ class EstoqueRepository:
         self.db.refresh(insumo)
         return insumo
 
-    def get_by_id(self, idEstoque: int) -> Estoque | None:
+    def get_by_id(self, idEstoque: uuid.UUID | str) -> Estoque | None:
         return self.db.query(Estoque).filter(Estoque.idEstoque == idEstoque).first()
 
-    def list_all(self) -> list[Estoque]:
-        return self.db.query(Estoque).order_by(Estoque.nome.asc()).all()
+    def list_all(self, idRestaurante: uuid.UUID | str | None = None) -> list[Estoque]:
+        query = self.db.query(Estoque)
+        if idRestaurante is not None:
+            query = query.filter(Estoque.idRestaurante == idRestaurante)
+        return query.order_by(Estoque.nome.asc()).all()
