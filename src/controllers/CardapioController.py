@@ -1,9 +1,8 @@
 import os
 
 from fastapi import APIRouter, Depends, Query, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from src.core.security import get_current_user
 
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
@@ -13,27 +12,6 @@ from src.schemas.CardapioSchema import (
     CardapioUpdate,
 )
 from src.services.CardapioService import CardapioService
-
-SECRET_KEY = os.getenv("JWT_SECRET")
-ALGORITHM = "HS256"
-security_optional = HTTPBearer(auto_error=False)
-
-
-def get_optional_user(
-    credenciais: HTTPAuthorizationCredentials | None = Depends(security_optional),
-    db: Session = Depends(get_db),
-) -> Usuario | None:
-    if credenciais is None or not SECRET_KEY:
-        return None
-    try:
-        payload = jwt.decode(credenciais.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        id_usuario = payload.get("sub")
-        if id_usuario:
-            return Usuario.get_by_id(db, int(id_usuario))
-    except (JWTError, ValueError):
-        return None
-    return None
-
 
 router = APIRouter(
     prefix="/cardapio",
@@ -50,7 +28,7 @@ router = APIRouter(
 def criar_item(
     dados: CardapioCreate,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(get_current_user),
 ):
     service = CardapioService(db)
 
@@ -102,7 +80,7 @@ def editar_item(
     idCardapio: int,
     dados: CardapioUpdate,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(get_current_user),
 ):
     service = CardapioService(db)
 
@@ -121,7 +99,7 @@ def editar_item(
 def excluir_item(
     idCardapio: int,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(get_current_user),
 ):
     service = CardapioService(db)
 

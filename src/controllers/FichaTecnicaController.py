@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from src.core.security import get_current_user
+from src.models.Usuario import Usuario
 
 from src.database.connection import get_db
 from src.schemas.FichaTecnicaSchema import (
@@ -18,7 +20,7 @@ router = APIRouter(prefix="/fichas-tecnica", tags=["fichas-tecnica"])
     response_model=FichaTecnicaResponseDTO,
     status_code=status.HTTP_201_CREATED,
 )
-def criar_ficha_tecnica(payload: FichaTecnicaCreateDTO, db: Session = Depends(get_db)):
+def criar_ficha_tecnica(payload: FichaTecnicaCreateDTO, db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
     try:
         service = FichaTecnicaService(db)
         existe = bool(service.repository.get_by_cardapio(payload.idCardapio))
@@ -46,6 +48,7 @@ def atualizar_ficha_tecnica_por_cardapio(
     idCardapio: int,
     payload: FichaTecnicaCreateDTO,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(get_current_user)
 ):
     if payload.idCardapio != idCardapio:
         raise HTTPException(
@@ -66,7 +69,7 @@ def atualizar_ficha_tecnica_por_cardapio(
 
 
 @router.get("/{idFichaTecnica}", response_model=FichaTecnicaResponseDTO)
-def buscar_ficha_tecnica(idFichaTecnica: int, db: Session = Depends(get_db)):
+def buscar_ficha_tecnica(idFichaTecnica: int, db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
     try:
         service = FichaTecnicaService(db)
         return service.buscar_por_id(idFichaTecnica)
@@ -80,7 +83,7 @@ def buscar_ficha_tecnica(idFichaTecnica: int, db: Session = Depends(get_db)):
 
 
 @router.get("/cardapio/{idCardapio}", response_model=list[FichaTecnicaResponseDTO])
-def listar_fichas_por_cardapio(idCardapio: int, db: Session = Depends(get_db)):
+def listar_fichas_por_cardapio(idCardapio: int, db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
     try:
         service = FichaTecnicaService(db)
         return service.listar_por_cardapio(idCardapio)
@@ -97,7 +100,7 @@ def listar_fichas_por_cardapio(idCardapio: int, db: Session = Depends(get_db)):
     "/cardapio/{idCardapio}/completa",
     response_model=FichaTecnicaCompletaResponseDTO,
 )
-def buscar_ficha_tecnica_completa(idCardapio: int, db: Session = Depends(get_db)):
+def buscar_ficha_tecnica_completa(idCardapio: int, db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
     try:
         service = FichaTecnicaService(db)
         return service.buscar_ficha_completa_por_cardapio(idCardapio)

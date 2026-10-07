@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
+from src.core.security import exigir_funcao
+from src.models.Usuario import Usuario
 
 from src.database.connection import get_db
 from src.schemas.RestauranteSchema import (
@@ -23,6 +25,7 @@ router = APIRouter(prefix="/restaurantes", tags=["Restaurantes"])
 def criar_restaurante(
     dados: RestauranteCreate,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> RestauranteResponse:
     service = RestauranteService(db)
     return service.create(dados)
@@ -47,6 +50,7 @@ def listar_restaurantes(
         default=100, ge=1, le=500, description="Quantidade máxima de registros"
     ),
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> list[RestauranteResponse]:
     service = RestauranteService(db)
     return service.list_all(
@@ -67,6 +71,7 @@ def listar_restaurantes(
 def obter_restaurante_por_id(
     idRestaurante: int,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> RestauranteResponse:
     service = RestauranteService(db)
     return service.get_by_id(idRestaurante)
@@ -83,6 +88,7 @@ def atualizar_restaurante(
     idRestaurante: int,
     dados: RestauranteUpdate,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> RestauranteResponse:
     service = RestauranteService(db)
     return service.update(idRestaurante, dados)
@@ -99,6 +105,7 @@ def atualizar_parcial_restaurante(
     idRestaurante: int,
     dados: RestauranteUpdate,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> RestauranteResponse:
     service = RestauranteService(db)
     return service.update(idRestaurante, dados)
@@ -115,6 +122,7 @@ def alterar_status_restaurante(
     idRestaurante: int,
     dados: RestauranteStatusUpdate,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> RestauranteResponse:
     service = RestauranteService(db)
     return service.change_status(idRestaurante, dados.status)
@@ -129,6 +137,7 @@ def alterar_status_restaurante(
 def deletar_restaurante(
     idRestaurante: int,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     service = RestauranteService(db)
     service.delete(idRestaurante)

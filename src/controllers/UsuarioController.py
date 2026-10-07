@@ -56,6 +56,7 @@ def listar_usuarios(
         default=100, ge=1, le=500, description="Quantidade máxima de registros"
     ),
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> list[UsuarioResponse]:
     service = UsuarioService(db)
     return service.list_all(
@@ -78,6 +79,7 @@ def listar_usuarios(
 def obter_usuario_por_id(
     idUsuario: int,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> UsuarioResponse:
     service = UsuarioService(db)
     return service.get_by_id(idUsuario)
@@ -94,6 +96,7 @@ def atualizar_usuario(
     idUsuario: int,
     dados: UsuarioUpdate,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> UsuarioResponse:
     service = UsuarioService(db)
     return service.update(idUsuario, dados)
@@ -110,6 +113,7 @@ def atualizar_parcial_usuario(
     idUsuario: int,
     dados: UsuarioUpdate,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> UsuarioResponse:
     service = UsuarioService(db)
     return service.update(idUsuario, dados)
@@ -126,6 +130,7 @@ def alterar_status_usuario(
     idUsuario: int,
     dados: UsuarioStatusUpdate,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ) -> UsuarioResponse:
     service = UsuarioService(db)
     return service.change_status(idUsuario, dados.status)
@@ -140,6 +145,7 @@ def alterar_status_usuario(
 def deletar_usuario(
     idUsuario: int,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     service = UsuarioService(db)
     service.delete(idUsuario)
