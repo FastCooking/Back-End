@@ -1,1 +1,1 @@
-Um commit aleatorio
+print("Hello World")
