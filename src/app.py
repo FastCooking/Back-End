@@ -21,6 +21,7 @@ from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
+from src.controllers.MesaController import router as mesa_router
 from src.database.connection import test_connection
 
 app = FastAPI(
@@ -62,6 +63,7 @@ app.include_router(auth_router)
 app.include_router(cardapio_router)
 app.include_router(estoque_router)
 app.include_router(ficha_tecnica_router)
+app.include_router(mesa_router)
 
 
 @app.get("/", tags=["Health Check"])
