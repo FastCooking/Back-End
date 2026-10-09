@@ -1,3 +1,8 @@
+from src.schemas.PedidoSchema import (
+    ItemPedidoStatusUpdate,
+    PedidoCreate,
+    PedidoItemCreate,
+)
 from src.schemas.RestauranteSchema import (
     RestauranteCreate,
     RestauranteResponse,
@@ -16,6 +21,9 @@ from src.schemas.UsuarioSchema import (
 )
 
 __all__ = [
+    "ItemPedidoStatusUpdate",
+    "PedidoCreate",
+    "PedidoItemCreate",
     "RestauranteCreate",
     "RestauranteResponse",
     "RestauranteStatusUpdate",
