@@ -1,10 +1,9 @@
-import json
-from typing import List
 from fastapi import WebSocket
+
 
 class KDSWebSocketManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -17,7 +16,7 @@ class KDSWebSocketManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # Tratar desconexões abruptas
                 print(f"Erro ao enviar WS para KDS: {e}")
 

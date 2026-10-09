@@ -1,9 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from sqlalchemy.orm import Session
+
+from src.core.websocket_manager import kds_ws_manager
 from src.database.connection import get_db
 from src.schemas.PedidoSchema import PedidoCriarSchema, PedidoResponseSchema
 from src.services.PedidoService import PedidoService
-from src.core.websocket_manager import kds_ws_manager
 
 router = APIRouter(
     prefix="/pedidos",
@@ -22,12 +30,12 @@ def criar_pedido(payload: PedidoCriarSchema, db: Session = Depends(get_db)):
         return pedido
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="Erro interno ao processar pedido")
 
-from typing import List
 
-@router.get("/", response_model=List[PedidoResponseSchema], status_code=status.HTTP_200_OK)
+
+@router.get("/", response_model=list[PedidoResponseSchema], status_code=status.HTTP_200_OK)
 def listar_pedidos(db: Session = Depends(get_db)):
     """Lista todos os pedidos abertos/fechados no banco."""
     service = PedidoService(db)
@@ -54,6 +62,6 @@ async def websocket_kds_endpoint(websocket: WebSocket):
         while True:
             # Mantém a conexão aberta esperando mensagens do cliente se necessário
             # Pode-se implementar ack's ou comandos de mudança de status a partir da cozinha.
-            data = await websocket.receive_text()
+            await websocket.receive_text()
     except WebSocketDisconnect:
         kds_ws_manager.disconnect(websocket)

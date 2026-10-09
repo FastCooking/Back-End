@@ -1,10 +1,12 @@
-from sqlalchemy.orm import Session
-from src.models.Pedido import Pedido
-from src.models.ItemPedido import ItemPedido
-from src.models.Cardapio import Cardapio
-from src.schemas.PedidoSchema import PedidoCriarSchema
-from src.core.websocket_manager import kds_ws_manager
 import asyncio
+
+from sqlalchemy.orm import Session
+
+from src.core.websocket_manager import kds_ws_manager
+from src.models.ItemPedido import ItemPedido
+from src.models.Pedido import Pedido
+from src.schemas.PedidoSchema import PedidoCriarSchema
+
 
 class PedidoService:
     def __init__(self, db: Session):
@@ -69,9 +71,9 @@ class PedidoService:
             self._notificar_kds(pedido, novos_itens_db)
             return pedido
             
-        except Exception as e:
+        except Exception:
             self.db.rollback()
-            raise e
+            raise
 
 
     def _notificar_kds(self, pedido: Pedido, itens: list[ItemPedido]):
@@ -95,7 +97,7 @@ class PedidoService:
                 loop.create_task(kds_ws_manager.broadcast_to_kitchen(payload))
             else:
                 loop.run_until_complete(kds_ws_manager.broadcast_to_kitchen(payload))
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
     def listar_pedidos(self):
