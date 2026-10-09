@@ -1,7 +1,9 @@
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Column, DateTime, ForeignKey, String, func, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
 from src.database.connection import Base
@@ -10,14 +12,31 @@ from src.database.connection import Base
 class Pedido(Base):
     __tablename__ = "Pedido"
 
-    idPedido : int = Column(Integer, primary_key=True, autoincrement=True)
-    idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    idMesa : int = Column(Integer, ForeignKey("Mesa.idMesa", onupdate="CASCADE", ondelete="RESTRICT"), nullable=True)
-    idGarcom : int = Column(Integer, ForeignKey("Usuarios.idUsuario", onupdate="CASCADE", ondelete="SET NULL"), nullable=True)
-    sessao_id : str = Column(String(100), index=True, nullable=True)
-    status = Column(String(30), nullable=False, default="Aberto")
-    dataAbertura : datetime = Column(DateTime, nullable=False, server_default=func.now())
-    dataFechamento : datetime = Column(DateTime, nullable=True)
+    idPedido: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    idRestaurante: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"),
+        nullable=False,
+    )
+    idMesa: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Mesa.idMesa", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    idGarcom: uuid.UUID | None = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Usuarios.idUsuario", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
+    sessao_id: str | None = Column(String(100), index=True, nullable=True)
+    status: str = Column(String(30), nullable=False, default="Aberto")
+    dataAbertura: datetime = Column(DateTime, nullable=False, server_default=func.now())
+    dataFechamento: datetime | None = Column(DateTime, nullable=True)
 
     # Relacionamentos
     restaurante = relationship("Restaurante", back_populates="pedidos")
@@ -30,7 +49,15 @@ class Pedido(Base):
         return f"<Pedido(id={self.idPedido}, mesa={self.idMesa}, status='{self.status}')>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, idMesa: int | None = None, idGarcom: int | None = None, sessao_id: str | None = None, status: str = "Aberto") -> "Pedido":
+    def create(
+        cls,
+        db: Session,
+        idRestaurante: uuid.UUID | str,
+        idMesa: uuid.UUID | str | None = None,
+        idGarcom: uuid.UUID | str | None = None,
+        sessao_id: str | None = None,
+        status: str = "Aberto",
+    ) -> "Pedido":
         """Cria e persiste um novo pedido/comanda."""
         pedido = cls(
             idRestaurante=idRestaurante,
@@ -45,20 +72,22 @@ class Pedido(Base):
         return pedido
 
     @classmethod
-    def get_by_id(cls, db: Session, idPedido: int) -> Optional["Pedido"]:
+    def get_by_id(cls, db: Session, idPedido: uuid.UUID | str) -> Optional["Pedido"]:
         """Busca pedido pelo ID."""
         return db.query(cls).filter(cls.idPedido == idPedido).first()
 
     @classmethod
-    def get_active_for_table(cls, db: Session, idMesa: int) -> Optional["Pedido"]:
+    def get_active_for_table(cls, db: Session, idMesa: uuid.UUID | str) -> Optional["Pedido"]:
         """Busca o pedido atualmente aberto/em andamento para uma mesa."""
         return db.query(cls).filter(
             cls.idMesa == idMesa,
-            cls.status.notin_(["Fechado", "Cancelado"])
+            cls.status.notin_(["Fechado", "Cancelado"]),
         ).first()
 
     @classmethod
-    def get_all_by_restaurant(cls, db: Session, idRestaurante: int, status: str | None = None) -> list["Pedido"]:
+    def get_all_by_restaurant(
+        cls, db: Session, idRestaurante: uuid.UUID | str, status: str | None = None
+    ) -> list["Pedido"]:
         """Lista pedidos de um restaurante, com filtro opcional de status."""
         query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
         if status:
@@ -77,7 +106,13 @@ class Pedido(Base):
         db.refresh(self)
         return self
 
-    def update(self, db: Session, idGarcom: int | None = None, status: str | None = None, dataFechamento: datetime | None = None) -> "Pedido":
+    def update(
+        self,
+        db: Session,
+        idGarcom: uuid.UUID | str | None = None,
+        status: str | None = None,
+        dataFechamento: datetime | None = None,
+    ) -> "Pedido":
         """Atualiza os dados de um pedido."""
         if idGarcom is not None:
             self.idGarcom = idGarcom

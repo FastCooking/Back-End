@@ -1,7 +1,9 @@
 import secrets
+import uuid
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, Integer, String
+from sqlalchemy import Boolean, Column, String, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
 from src.database.connection import Base
@@ -10,13 +12,18 @@ from src.database.connection import Base
 class Restaurante(Base):
     __tablename__ = "Restaurante"
 
-    idRestaurante : int = Column(Integer, primary_key=True, autoincrement=True)
-    nome : str = Column(String(255), nullable=False)
-    cnpj : str = Column(String(18), unique=True, nullable=False)
-    telefone : str = Column(String(15), nullable=False)
-    email : str = Column(String(255), unique=True, nullable=False)
-    cep : str =  Column(String(9), nullable=False)
-    status : bool =  Column(Boolean, nullable=False, default=True)
+    idRestaurante: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    nome: str = Column(String(255), nullable=False)
+    cnpj: str = Column(String(18), unique=True, nullable=False)
+    telefone: str = Column(String(15), nullable=False)
+    email: str = Column(String(255), unique=True, nullable=False)
+    cep: str = Column(String(9), nullable=False)
+    status: bool = Column(Boolean, nullable=False, default=True)
 
     # Relacionamentos
     usuarios = relationship("Usuario", back_populates="restaurante", cascade="all, delete-orphan")
@@ -29,23 +36,34 @@ class Restaurante(Base):
         return f"<Restaurante(id={self.idRestaurante}, nome='{self.nome}')>"
 
     @classmethod
-    def create(cls, db: Session, nome: str, cnpj: str, telefone: str, email: str, cep: str, status: bool) -> "Restaurante":
+    def create(
+        cls,
+        db: Session,
+        nome: str,
+        cnpj: str,
+        telefone: str,
+        email: str,
+        cep: str,
+        status: bool,
+        commit: bool = True,
+    ) -> "Restaurante":
         """Cria e persiste um novo restaurante."""
         restaurante = cls(
-            nome = nome,
-            cnpj = cnpj,
-            telefone = telefone,
-            email = email,
-            cep = cep,
-            status = status
+            nome=nome,
+            cnpj=cnpj,
+            telefone=telefone,
+            email=email,
+            cep=cep,
+            status=status,
         )
         db.add(restaurante)
-        db.commit()
-        db.refresh(restaurante)
+        if commit:
+            db.commit()
+            db.refresh(restaurante)
         return restaurante
 
     @classmethod
-    def get_by_id(cls, db: Session, idRestaurante: int) -> Optional["Restaurante"]:
+    def get_by_id(cls, db: Session, idRestaurante: uuid.UUID | str) -> Optional["Restaurante"]:
         """Busca um restaurante pelo ID."""
         return db.query(cls).filter(cls.idRestaurante == idRestaurante).first()
 
@@ -64,7 +82,16 @@ class Restaurante(Base):
         """Retorna todos os restaurantes cadastrados."""
         return db.query(cls).all()
 
-    def update(self, db: Session, nome: str | None = None, cnpj: str | None = None, telefone: str | None = None, email: str | None = None, cep: str | None = None, status: bool | None = None,) -> "Restaurante":
+    def update(
+        self,
+        db: Session,
+        nome: str | None = None,
+        cnpj: str | None = None,
+        telefone: str | None = None,
+        email: str | None = None,
+        cep: str | None = None,
+        status: bool | None = None,
+    ) -> "Restaurante":
         """Atualiza os dados do restaurante."""
         if nome is not None:
             self.nome = nome
@@ -82,7 +109,7 @@ class Restaurante(Base):
         db.commit()
         db.refresh(self)
         return self
-    
+
     def able(self, db: Session) -> "Restaurante":
         """Ativa o restaurante."""
         self.status = True
@@ -97,7 +124,7 @@ class Restaurante(Base):
         db.refresh(self)
         return self
 
-    def delete(self, db: Session) -> "Restaurante":
+    def delete(self, db: Session, commit: bool = True) -> "Restaurante":
         """Anonimiza e desativa o restaurante preservando a unicidade das restrições de banco."""
         codigo = secrets.token_hex(5)
         self.nome = f"RESTAURANTE REMOVIDO {self.idRestaurante}"
@@ -107,6 +134,7 @@ class Restaurante(Base):
         self.cep = "00000-000"
         self.status = False
 
-        db.commit()
-        db.refresh(self)
+        if commit:
+            db.commit()
+            db.refresh(self)
         return self

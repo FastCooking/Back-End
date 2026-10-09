@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -43,7 +45,7 @@ def criar_ficha_tecnica(payload: FichaTecnicaCreateDTO, db: Session = Depends(ge
     status_code=status.HTTP_200_OK,
 )
 def atualizar_ficha_tecnica_por_cardapio(
-    idCardapio: int,
+    idCardapio: uuid.UUID,
     payload: FichaTecnicaCreateDTO,
     db: Session = Depends(get_db),
 ):
@@ -66,7 +68,7 @@ def atualizar_ficha_tecnica_por_cardapio(
 
 
 @router.get("/{idFichaTecnica}", response_model=FichaTecnicaResponseDTO)
-def buscar_ficha_tecnica(idFichaTecnica: int, db: Session = Depends(get_db)):
+def buscar_ficha_tecnica(idFichaTecnica: uuid.UUID, db: Session = Depends(get_db)):
     try:
         service = FichaTecnicaService(db)
         return service.buscar_por_id(idFichaTecnica)
@@ -80,7 +82,7 @@ def buscar_ficha_tecnica(idFichaTecnica: int, db: Session = Depends(get_db)):
 
 
 @router.get("/cardapio/{idCardapio}", response_model=list[FichaTecnicaResponseDTO])
-def listar_fichas_por_cardapio(idCardapio: int, db: Session = Depends(get_db)):
+def listar_fichas_por_cardapio(idCardapio: uuid.UUID, db: Session = Depends(get_db)):
     try:
         service = FichaTecnicaService(db)
         return service.listar_por_cardapio(idCardapio)
@@ -97,7 +99,7 @@ def listar_fichas_por_cardapio(idCardapio: int, db: Session = Depends(get_db)):
     "/cardapio/{idCardapio}/completa",
     response_model=FichaTecnicaCompletaResponseDTO,
 )
-def buscar_ficha_tecnica_completa(idCardapio: int, db: Session = Depends(get_db)):
+def buscar_ficha_tecnica_completa(idCardapio: uuid.UUID, db: Session = Depends(get_db)):
     try:
         service = FichaTecnicaService(db)
         return service.buscar_ficha_completa_por_cardapio(idCardapio)

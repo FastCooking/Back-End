@@ -1,8 +1,16 @@
+import uuid
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from src.models.Restaurante import Restaurante
-from src.schemas.RestauranteSchema import RestauranteCreate, RestauranteUpdate
+from src.models.Usuario import Usuario
+from src.schemas.RestauranteSchema import (
+    RestauranteComUsuarioCreate,
+    RestauranteCreate,
+    RestauranteUpdate,
+)
+from src.services.UsuarioService import hash_senha
 
 
 class RestauranteService:
@@ -38,7 +46,85 @@ class RestauranteService:
             status=data.status,
         )
 
-    def get_by_id(self, idRestaurante: int) -> Restaurante:
+    def create_with_user(
+        self, data: RestauranteComUsuarioCreate
+    ) -> tuple[Restaurante, Usuario]:
+        """Cria um restaurante e o usuário inicial/gerente de forma atômica dentro de uma transação."""
+        # 1. Validações prévias de unicidade para o Restaurante
+        if Restaurante.get_by_cnpj(self.db, data.restaurante.cnpj):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Já existe um restaurante cadastrado com o CNPJ '{data.restaurante.cnpj}'.",
+            )
+        if Restaurante.get_by_email(self.db, data.restaurante.email):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Já existe um restaurante cadastrado com o e-mail '{data.restaurante.email}'.",
+            )
+
+        # 2. Validações prévias de unicidade para o Usuário
+        if Usuario.get_by_email(self.db, data.usuario.email):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Já existe um usuário cadastrado com o e-mail/login '{data.usuario.email}'.",
+            )
+
+        cpf_final = data.usuario.cpf
+        if cpf_final is not None:
+            if Usuario.get_by_cpf(self.db, cpf_final):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Já existe um usuário cadastrado com o CPF '{cpf_final}'.",
+                )
+        else:
+            import time
+            ts = int(time.time() * 1000) % 1000000000
+            base_dig = f"{ts:09d}"
+            soma1 = sum(int(base_dig[i]) * (10 - i) for i in range(9))
+            d1 = 0 if (soma1 * 10) % 11 == 10 else (soma1 * 10) % 11
+            soma2 = sum(int((base_dig + str(d1))[i]) * (11 - i) for i in range(10))
+            d2 = 0 if (soma2 * 10) % 11 == 10 else (soma2 * 10) % 11
+            cpf_final = f"{base_dig[:3]}.{base_dig[3:6]}.{base_dig[6:9]}-{d1}{d2}"
+
+        # 3. Execução transacional atômica
+        try:
+            # Cria o restaurante sem efetivar commit
+            restaurante = Restaurante.create(
+                db=self.db,
+                nome=data.restaurante.nome,
+                cnpj=data.restaurante.cnpj,
+                telefone=data.restaurante.telefone,
+                email=data.restaurante.email,
+                cep=data.restaurante.cep,
+                status=data.restaurante.status,
+                commit=False,
+            )
+            self.db.flush()
+
+            # Cria o usuário associado
+            senha_hasheada = hash_senha(data.usuario.senha)
+            usuario = Usuario.create(
+                db=self.db,
+                idRestaurante=restaurante.idRestaurante,
+                nome=data.usuario.nome,
+                cpf=cpf_final,
+                email=data.usuario.email,
+                senha=senha_hasheada,
+                funcao=data.usuario.funcao or "Gerente",
+                commit=False,
+            )
+            self.db.flush()
+
+            # Se ambas as operações forem bem-sucedidas, efetivar o COMMIT
+            self.db.commit()
+            self.db.refresh(restaurante)
+            self.db.refresh(usuario)
+            return restaurante, usuario
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def get_by_id(self, idRestaurante: uuid.UUID | str) -> Restaurante:
         """Busca um restaurante pelo ID ou levanta 404."""
         restaurante = Restaurante.get_by_id(self.db, idRestaurante)
         if not restaurante:
@@ -64,13 +150,13 @@ class RestauranteService:
             )
 
         return (
-            query.order_by(Restaurante.idRestaurante.asc())
+            query.order_by(Restaurante.nome.asc())
             .offset(skip)
             .limit(limit)
             .all()
         )
 
-    def update(self, idRestaurante: int, data: RestauranteUpdate) -> Restaurante:
+    def update(self, idRestaurante: uuid.UUID | str, data: RestauranteUpdate) -> Restaurante:
         """Atualiza os dados de um restaurante com validações."""
         restaurante = self.get_by_id(idRestaurante)
 
@@ -116,7 +202,7 @@ class RestauranteService:
             status=data.status,
         )
 
-    def change_status(self, idRestaurante: int, novo_status: bool) -> Restaurante:
+    def change_status(self, idRestaurante: uuid.UUID | str, novo_status: bool) -> Restaurante:
         """Altera o status do restaurante via métodos able/disable do Model."""
         restaurante = self.get_by_id(idRestaurante)
         if novo_status:
@@ -125,8 +211,26 @@ class RestauranteService:
             restaurante.disable(self.db)
         return restaurante
 
-    def delete(self, idRestaurante: int) -> bool:
-        """Anonimiza e desativa o restaurante (soft delete via delete do Model)."""
+    def delete(self, idRestaurante: uuid.UUID | str) -> bool:
+        """Anonimiza e desativa o restaurante e todos os seus usuários dependentes em cascata de forma transacional."""
         restaurante = self.get_by_id(idRestaurante)
-        restaurante.delete(self.db)
-        return True
+
+        try:
+            # 1. Soft delete e anonimização do restaurante
+            restaurante.delete(self.db, commit=False)
+
+            # 2. Soft delete e anonimização em cascata dos usuários do restaurante
+            usuarios = (
+                self.db.query(Usuario)
+                .filter(Usuario.idRestaurante == idRestaurante)
+                .all()
+            )
+            for usuario in usuarios:
+                usuario.delete(self.db, commit=False)
+
+            # 3. Commit de toda a operação
+            self.db.commit()
+            return True
+        except Exception:
+            self.db.rollback()
+            raise

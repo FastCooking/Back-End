@@ -1,13 +1,15 @@
+import uuid
+
 from pydantic import BaseModel, Field, field_validator
 
 
 class FichaTecnicaItemDTO(BaseModel):
-    idEstoque: int = Field(..., gt=0)
+    idEstoque: uuid.UUID
     quantidadeNecessaria: float = Field(..., gt=0)
 
 
 class FichaTecnicaCreateDTO(BaseModel):
-    idCardapio: int = Field(..., gt=0)
+    idCardapio: uuid.UUID
     insumos: list[FichaTecnicaItemDTO] = Field(..., min_length=1)
 
     @field_validator("insumos")
@@ -15,7 +17,7 @@ class FichaTecnicaCreateDTO(BaseModel):
     def validate_unique_ingredients(
         cls, value: list[FichaTecnicaItemDTO]
     ) -> list[FichaTecnicaItemDTO]:
-        seen: set[int] = set()
+        seen: set[uuid.UUID] = set()
         for item in value:
             if item.idEstoque in seen:
                 raise ValueError(
@@ -26,14 +28,14 @@ class FichaTecnicaCreateDTO(BaseModel):
 
 
 class FichaTecnicaItemResponseDTO(BaseModel):
-    idEstoque: int
+    idEstoque: uuid.UUID
     quantidadeNecessaria: float
 
     model_config = {"from_attributes": True}
 
 
 class CardapioFichaTecnicaItemDTO(BaseModel):
-    idEstoque: int
+    idEstoque: uuid.UUID
     nome: str
     quantidadeNecessaria: float
     unidadeMedida: str = "UN"
@@ -42,8 +44,8 @@ class CardapioFichaTecnicaItemDTO(BaseModel):
 
 
 class CardapioResumoDTO(BaseModel):
-    idCardapio: int
-    idRestaurante: int
+    idCardapio: uuid.UUID
+    idRestaurante: uuid.UUID
     nome: str
     preco: float
     categoria: str
@@ -53,8 +55,8 @@ class CardapioResumoDTO(BaseModel):
 
 
 class FichaTecnicaResponseDTO(BaseModel):
-    idFichaTecnica: int
-    idCardapio: int
+    idFichaTecnica: uuid.UUID
+    idCardapio: uuid.UUID
     insumos: list[FichaTecnicaItemResponseDTO]
 
     model_config = {"from_attributes": True}

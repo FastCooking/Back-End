@@ -1,6 +1,9 @@
 import re
+import uuid
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from src.schemas.UsuarioSchema import UsuarioResponse
 
 
 def validar_cnpj(cnpj: str) -> str:
@@ -133,7 +136,7 @@ class RestauranteStatusUpdate(BaseModel):
 
 
 class RestauranteResponse(BaseModel):
-    idRestaurante: int
+    idRestaurante: uuid.UUID
     nome: str
     cnpj: str
     telefone: str
@@ -142,3 +145,32 @@ class RestauranteResponse(BaseModel):
     status: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UsuarioInicialCreate(BaseModel):
+    nome: str = Field(..., min_length=2, max_length=255, description="Nome completo do gerente/usuário inicial")
+    cpf: str | None = Field(default=None, description="CPF válido do usuário")
+    email: EmailStr = Field(..., description="E-mail de login do usuário inicial")
+    senha: str = Field(..., min_length=6, max_length=128, description="Senha de acesso em texto plano")
+    funcao: str = Field(default="Gerente", description="Função inicial do usuário (padrão: Gerente)")
+
+    @field_validator("nome")
+    @classmethod
+    def validar_nome(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("O nome deve ter no mínimo 2 caracteres.")
+        return v
+
+
+class RestauranteComUsuarioCreate(BaseModel):
+    restaurante: RestauranteCreate
+    usuario: UsuarioInicialCreate
+
+
+class RestauranteComUsuarioResponse(BaseModel):
+    restaurante: RestauranteResponse
+    usuario: UsuarioResponse
+
+    model_config = ConfigDict(from_attributes=True)
+

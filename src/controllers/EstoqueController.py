@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from src.database.connection import get_db
@@ -23,7 +25,7 @@ def criar_insumo(payload: EstoqueCreateDTO, db: Session = Depends(get_db)):
 
 
 @router.get("/{idEstoque}", response_model=EstoqueResponseDTO)
-def buscar_insumo_por_id(idEstoque: int, db: Session = Depends(get_db)):
+def buscar_insumo_por_id(idEstoque: uuid.UUID, db: Session = Depends(get_db)):
     try:
         service = EstoqueService(db)
         return service.buscar_por_id(idEstoque)
@@ -37,10 +39,13 @@ def buscar_insumo_por_id(idEstoque: int, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[EstoqueResponseDTO])
-def listar_insumos(db: Session = Depends(get_db)):
+def listar_insumos(
+    idRestaurante: uuid.UUID | None = Query(default=None, description="Filtrar por Restaurante"),
+    db: Session = Depends(get_db),
+):
     try:
         service = EstoqueService(db)
-        return service.listar_insumos()
+        return service.listar_insumos(idRestaurante=idRestaurante)
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover
