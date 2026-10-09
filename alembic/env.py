@@ -90,7 +90,7 @@ def run_migrations_online() -> None:
             from sqlalchemy import text
             connection.execute(text("UPDATE alembic_version SET version_num = '001_initial_schema' WHERE version_num = '001_initial_uuid_schema'"))
             connection.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         # -------------------------------------------------------------
 
