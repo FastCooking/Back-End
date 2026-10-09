@@ -85,6 +85,15 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # --- HACK TEMPORÁRIO PARA CORRIGIR O BANCO DE DADOS REMOTO ---
+        try:
+            from sqlalchemy import text
+            connection.execute(text("UPDATE alembic_version SET version_num = '001_initial_schema' WHERE version_num = '001_initial_uuid_schema'"))
+            connection.commit()
+        except Exception:
+            pass
+        # -------------------------------------------------------------
+
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
