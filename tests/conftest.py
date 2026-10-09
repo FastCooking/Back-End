@@ -6,12 +6,21 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.app import app
-from src.database.connection import Base, get_db
+from src.database.connection import Base, SessionLocal, get_db
+
+
+@event.listens_for(Base.metadata, "before_create")
+def _strip_server_defaults_for_sqlite(target, connection, **kw):
+    if connection.dialect.name == "sqlite":
+        for table in target.tables.values():
+            for col in table.columns:
+                if col.server_default is not None:
+                    col.server_default = None
 
 # 1. Cria um banco SQLite em memória apenas para testes (super rápido e não afeta o fastcooking.db real)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -21,6 +30,7 @@ engine = create_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
+SessionLocal.configure(bind=engine)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @pytest.fixture(scope="function", autouse=True)

@@ -1,35 +1,39 @@
-import os
-import sys
-from pathlib import Path
-
-# Adiciona o diretório raiz do projeto ao sys.path para garantir importações com 'src.'
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+import uuid
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
-
-os.environ["DATABASE_URL"] = "sqlite://"
-
-from src.database.connection import Base, SessionLocal
-
-engine = create_engine(
-    "sqlite://",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-SessionLocal.configure(bind=engine)
-Base.metadata.create_all(bind=engine)
 
 from src.app import app
+from src.database.connection import SessionLocal
+from src.models.Restaurante import Restaurante
 
 client = TestClient(app)
 
 
+def _obter_ou_criar_restaurante() -> uuid.UUID:
+    session = SessionLocal()
+    try:
+        restaurante = session.query(Restaurante).first()
+        if not restaurante:
+            restaurante = Restaurante(
+                nome="Restaurante Teste Estoque",
+                cnpj="12.345.678/0001-90",
+                telefone="(11) 98765-4321",
+                email="estoque_restaurante@teste.com",
+                cep="01001-000",
+                status=True,
+            )
+            session.add(restaurante)
+            session.commit()
+            session.refresh(restaurante)
+        return restaurante.idRestaurante
+    finally:
+        session.close()
+
+
 def test_create_insumo_via_api():
+    id_restaurante = _obter_ou_criar_restaurante()
     payload = {
+        "idRestaurante": str(id_restaurante),
         "nome": "Tomate",
         "quantidadeEmEstoque": 20.5,
         "quantidadeMinima": 5,
@@ -45,7 +49,9 @@ def test_create_insumo_via_api():
 
 
 def test_create_insumo_rejeita_quantidade_negativa():
+    id_restaurante = _obter_ou_criar_restaurante()
     payload = {
+        "idRestaurante": str(id_restaurante),
         "nome": "Cebola",
         "quantidadeEmEstoque": -1,
         "quantidadeMinima": 2,
@@ -57,7 +63,9 @@ def test_create_insumo_rejeita_quantidade_negativa():
 
 
 def test_get_insumo_por_id():
+    id_restaurante = _obter_ou_criar_restaurante()
     payload = {
+        "idRestaurante": str(id_restaurante),
         "nome": "Alho",
         "quantidadeEmEstoque": 12,
         "quantidadeMinima": 3,
@@ -75,6 +83,17 @@ def test_get_insumo_por_id():
 
 
 def test_listar_insumos():
+    id_restaurante = _obter_ou_criar_restaurante()
+    client.post(
+        "/insumos",
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Tomate",
+            "quantidadeEmEstoque": 20.5,
+            "quantidadeMinima": 5,
+        },
+    )
+
     response = client.get("/insumos")
 
     assert response.status_code == 200
@@ -84,16 +103,22 @@ def test_listar_insumos():
 
 
 def test_create_ficha_tecnica():
+    id_restaurante = _obter_ou_criar_restaurante()
     item = client.post(
         "/insumos",
-        json={"nome": "Queijo", "quantidadeEmEstoque": 50, "quantidadeMinima": 10},
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Queijo",
+            "quantidadeEmEstoque": 50,
+            "quantidadeMinima": 10,
+        },
     )
     item_id = item.json()["idEstoque"]
 
     cardapio = client.post(
         "/cardapio",
         json={
-            "idRestaurante": 1,
+            "idRestaurante": str(id_restaurante),
             "nome": "Pizza Teste",
             "preco": 49.9,
             "categoria": "Pizzas",
@@ -117,16 +142,22 @@ def test_create_ficha_tecnica():
 
 
 def test_update_ficha_tecnica():
+    id_restaurante = _obter_ou_criar_restaurante()
     item = client.post(
         "/insumos",
-        json={"nome": "Tomate", "quantidadeEmEstoque": 30, "quantidadeMinima": 5},
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Tomate",
+            "quantidadeEmEstoque": 30,
+            "quantidadeMinima": 5,
+        },
     )
     item_id = item.json()["idEstoque"]
 
     cardapio = client.post(
         "/cardapio",
         json={
-            "idRestaurante": 1,
+            "idRestaurante": str(id_restaurante),
             "nome": "Pizza Atualizacao",
             "preco": 55.0,
             "categoria": "Pizzas",
@@ -161,8 +192,8 @@ def test_update_ficha_tecnica():
 
 def test_ficha_tecnica_cardapio_inexistente():
     payload = {
-        "idCardapio": 99999,
-        "insumos": [{"idEstoque": 1, "quantidadeNecessaria": 1.0}],
+        "idCardapio": str(uuid.uuid4()),
+        "insumos": [{"idEstoque": str(uuid.uuid4()), "quantidadeNecessaria": 1.0}],
     }
 
     response = client.post("/fichas-tecnica", json=payload)
@@ -171,9 +202,23 @@ def test_ficha_tecnica_cardapio_inexistente():
 
 
 def test_ficha_tecnica_insumo_inexistente():
+    id_restaurante = _obter_ou_criar_restaurante()
+    cardapio = client.post(
+        "/cardapio",
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Pizza Insumo Inexistente",
+            "preco": 30.0,
+            "categoria": "Pizzas",
+            "pathImage": "inexistente.png",
+            "descricao": "insumo inexistente",
+        },
+    )
+    cardapio_id = cardapio.json()["idCardapio"]
+
     payload = {
-        "idCardapio": 1,
-        "insumos": [{"idEstoque": 99999, "quantidadeNecessaria": 1.0}],
+        "idCardapio": cardapio_id,
+        "insumos": [{"idEstoque": str(uuid.uuid4()), "quantidadeNecessaria": 1.0}],
     }
 
     response = client.post("/fichas-tecnica", json=payload)
@@ -182,16 +227,22 @@ def test_ficha_tecnica_insumo_inexistente():
 
 
 def test_ficha_tecnica_quantidade_invalida():
+    id_restaurante = _obter_ou_criar_restaurante()
     item = client.post(
         "/insumos",
-        json={"nome": "Alho", "quantidadeEmEstoque": 15, "quantidadeMinima": 5},
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Alho",
+            "quantidadeEmEstoque": 15,
+            "quantidadeMinima": 5,
+        },
     )
     item_id = item.json()["idEstoque"]
 
     cardapio = client.post(
         "/cardapio",
         json={
-            "idRestaurante": 1,
+            "idRestaurante": str(id_restaurante),
             "nome": "Pizza Quantidade",
             "preco": 44.0,
             "categoria": "Pizzas",
@@ -213,16 +264,22 @@ def test_ficha_tecnica_quantidade_invalida():
 
 
 def test_ficha_tecnica_insumos_duplicados():
+    id_restaurante = _obter_ou_criar_restaurante()
     item = client.post(
         "/insumos",
-        json={"nome": "Cebola", "quantidadeEmEstoque": 20, "quantidadeMinima": 5},
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Cebola",
+            "quantidadeEmEstoque": 20,
+            "quantidadeMinima": 5,
+        },
     )
     item_id = item.json()["idEstoque"]
 
     cardapio = client.post(
         "/cardapio",
         json={
-            "idRestaurante": 1,
+            "idRestaurante": str(id_restaurante),
             "nome": "Pizza Duplicada",
             "preco": 50.0,
             "categoria": "Pizzas",
@@ -247,16 +304,22 @@ def test_ficha_tecnica_insumos_duplicados():
 
 
 def test_buscar_ficha_tecnica_por_id_retorna_apenas_esse_vinculo():
+    id_restaurante = _obter_ou_criar_restaurante()
     item = client.post(
         "/insumos",
-        json={"nome": "Azeite", "quantidadeEmEstoque": 12, "quantidadeMinima": 2},
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Azeite",
+            "quantidadeEmEstoque": 12,
+            "quantidadeMinima": 2,
+        },
     )
     item_id = item.json()["idEstoque"]
 
     cardapio = client.post(
         "/cardapio",
         json={
-            "idRestaurante": 1,
+            "idRestaurante": str(id_restaurante),
             "nome": "Pizza Azeite",
             "preco": 58.0,
             "categoria": "Pizzas",
@@ -272,7 +335,7 @@ def test_buscar_ficha_tecnica_por_id_retorna_apenas_esse_vinculo():
             "idCardapio": cardapio_id,
             "insumos": [
                 {"idEstoque": item_id, "quantidadeNecessaria": 0.6},
-                {"idEstoque": 99999, "quantidadeNecessaria": 0.2},
+                {"idEstoque": str(uuid.uuid4()), "quantidadeNecessaria": 0.2},
             ],
         },
     )
@@ -298,19 +361,30 @@ def test_buscar_ficha_tecnica_por_id_retorna_apenas_esse_vinculo():
 
 
 def test_buscar_ficha_tecnica_completa_do_cardapio():
+    id_restaurante = _obter_ou_criar_restaurante()
     item1 = client.post(
         "/insumos",
-        json={"nome": "Queijo", "quantidadeEmEstoque": 50, "quantidadeMinima": 10},
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Queijo",
+            "quantidadeEmEstoque": 50,
+            "quantidadeMinima": 10,
+        },
     )
     item2 = client.post(
         "/insumos",
-        json={"nome": "Molho", "quantidadeEmEstoque": 25, "quantidadeMinima": 8},
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Molho",
+            "quantidadeEmEstoque": 25,
+            "quantidadeMinima": 8,
+        },
     )
 
     cardapio = client.post(
         "/cardapio",
         json={
-            "idRestaurante": 1,
+            "idRestaurante": str(id_restaurante),
             "nome": "Pizza Completa",
             "preco": 60.0,
             "categoria": "Pizzas",
@@ -342,16 +416,17 @@ def test_buscar_ficha_tecnica_completa_do_cardapio():
 
 
 def test_buscar_ficha_tecnica_completa_cardapio_inexistente():
-    response = client.get("/fichas-tecnica/cardapio/99999/completa")
+    response = client.get(f"/fichas-tecnica/cardapio/{uuid.uuid4()}/completa")
 
     assert response.status_code == 404
 
 
 def test_buscar_ficha_tecnica_completa_sem_ficha():
+    id_restaurante = _obter_ou_criar_restaurante()
     cardapio = client.post(
         "/cardapio",
         json={
-            "idRestaurante": 1,
+            "idRestaurante": str(id_restaurante),
             "nome": "Sem Ficha",
             "preco": 20.0,
             "categoria": "Lanches",

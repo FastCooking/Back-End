@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import uuid
 
 # Adiciona o diretório raiz ao sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -349,7 +350,7 @@ def test_users():
 
     session_verificacao = SessionLocal()
     try:
-        usuario_db = session_verificacao.query(Usuario).filter(Usuario.idUsuario == id_criado).first()
+        usuario_db = session_verificacao.query(Usuario).filter(Usuario.idUsuario == uuid.UUID(str(id_criado))).first()
         assert usuario_db is not None, "Usuário não encontrado no banco de dados"
         assert usuario_db.senha != senha_teste, "A senha foi gravada em texto plano!"
         assert usuario_db.senha.startswith(("$2b$", "$2a$")), f"A senha não está em formato bcrypt: {usuario_db.senha}"
