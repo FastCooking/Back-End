@@ -33,6 +33,7 @@ class Pedido(Base):
         ForeignKey("Usuarios.idUsuario", onupdate="CASCADE", ondelete="SET NULL"),
         nullable=True,
     )
+    sessao_id: str | None = Column(String(100), index=True, nullable=True)
     status: str = Column(String(30), nullable=False, default="Aberto")
     dataAbertura: datetime = Column(DateTime, nullable=False, server_default=func.now())
     dataFechamento: datetime | None = Column(DateTime, nullable=True)
@@ -52,8 +53,9 @@ class Pedido(Base):
         cls,
         db: Session,
         idRestaurante: uuid.UUID | str,
-        idMesa: uuid.UUID | str,
+        idMesa: uuid.UUID | str | None = None,
         idGarcom: uuid.UUID | str | None = None,
+        sessao_id: str | None = None,
         status: str = "Aberto",
     ) -> "Pedido":
         """Cria e persiste um novo pedido/comanda."""
@@ -61,7 +63,8 @@ class Pedido(Base):
             idRestaurante=idRestaurante,
             idMesa=idMesa,
             idGarcom=idGarcom,
-            status=status,
+            sessao_id=sessao_id,
+            status=status
         )
         db.add(pedido)
         db.commit()

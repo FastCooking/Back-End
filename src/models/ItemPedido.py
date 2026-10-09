@@ -31,6 +31,8 @@ class ItemPedido(Base):
     precoUnitario: float = Column(Numeric(10, 2), nullable=False)
     status: str = Column(String(30), nullable=False, default="Pendente")
     observacao: str | None = Column(Text, nullable=True)
+    categoria: str = Column(String(50), nullable=True)
+    prioridade: int = Column(Integer, default=1)
 
     # Relacionamentos
     pedido = relationship("Pedido", back_populates="itens")
@@ -49,6 +51,8 @@ class ItemPedido(Base):
         precoUnitario: float,
         observacao: str | None = None,
         status: str = "Pendente",
+        categoria: str | None = None,
+        prioridade: int = 1,
     ) -> "ItemPedido":
         """Cria e persiste um novo item de pedido."""
         item = cls(
@@ -58,6 +62,8 @@ class ItemPedido(Base):
             precoUnitario=precoUnitario,
             observacao=observacao,
             status=status,
+            categoria=categoria,
+            prioridade=prioridade
         )
         db.add(item)
         db.commit()
@@ -113,7 +119,7 @@ class ItemPedido(Base):
             self.status = status
         if observacao is not None:
             self.observacao = observacao
-        
+
         db.commit()
         db.refresh(self)
         return self
