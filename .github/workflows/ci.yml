@@ -44,7 +44,7 @@ jobs:
         run: ruff check .
 
       - name: Rodar migrações
-        run: alembic upgrade head
+        run: alembic -c alembic/alembic.ini upgrade head
 
       - name: Rodar testes
         run: pytest
@@ -79,7 +79,7 @@ jobs:
         run: ruff check .
 
       - name: Rodar migrações
-        run: alembic upgrade head
+        run: alembic -c alembic/alembic.ini upgrade head
 
       - name: Rodar testes
         run: pytest
