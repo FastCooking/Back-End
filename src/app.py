@@ -21,6 +21,7 @@ from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
+from src.controllers.PedidoController import router as pedido_router
 from src.database.connection import test_connection
 
 app = FastAPI(
@@ -62,6 +63,7 @@ app.include_router(auth_router)
 app.include_router(cardapio_router)
 app.include_router(estoque_router)
 app.include_router(ficha_tecnica_router)
+app.include_router(pedido_router)
 
 
 @app.get("/", tags=["Health Check"])
@@ -100,5 +102,7 @@ def envTest(env: dict):
 if __name__ == "__main__":
     varsEnv = getVarsEnv()
     envTest(varsEnv)
+    from src.database.connection import Base, engine
+    Base.metadata.create_all(bind=engine)
     test_connection()
     uvicorn.run("src.app:app", host="127.0.0.1", port=int(varsEnv["SERVER_PORT"]), reload=True)

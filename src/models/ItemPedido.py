@@ -16,6 +16,8 @@ class ItemPedido(Base):
     precoUnitario : float = Column(Numeric(10, 2), nullable=False)
     status : str = Column(String(30), nullable=False, default="Pendente")
     observacao : str = Column(Text, nullable=True)
+    categoria : str = Column(String(50), nullable=True)
+    prioridade : int = Column(Integer, default=1)
 
     # Relacionamentos
     pedido = relationship("Pedido", back_populates="itens")
@@ -25,7 +27,7 @@ class ItemPedido(Base):
         return f"<ItemPedido(id={self.idItemPedido}, pedido={self.idPedido}, cardapio={self.idCardapio}, status='{self.status}')>"
 
     @classmethod
-    def create(cls, db: Session, idPedido: int, idCardapio: int, quantidade: int, precoUnitario: float, observacao: str | None = None, status: str = "Pendente") -> "ItemPedido":
+    def create(cls, db: Session, idPedido: int, idCardapio: int, quantidade: int, precoUnitario: float, observacao: str | None = None, status: str = "Pendente", categoria: str | None = None, prioridade: int = 1) -> "ItemPedido":
         """Cria e persiste um novo item de pedido."""
         item = cls(
             idPedido=idPedido,
@@ -34,6 +36,8 @@ class ItemPedido(Base):
             precoUnitario=precoUnitario,
             observacao=observacao,
             status=status,
+            categoria=categoria,
+            prioridade=prioridade
         )
         db.add(item)
         db.commit()

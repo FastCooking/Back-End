@@ -12,8 +12,9 @@ class Pedido(Base):
 
     idPedido : int = Column(Integer, primary_key=True, autoincrement=True)
     idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    idMesa : int = Column(Integer, ForeignKey("Mesa.idMesa", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False)
+    idMesa : int = Column(Integer, ForeignKey("Mesa.idMesa", onupdate="CASCADE", ondelete="RESTRICT"), nullable=True)
     idGarcom : int = Column(Integer, ForeignKey("Usuarios.idUsuario", onupdate="CASCADE", ondelete="SET NULL"), nullable=True)
+    sessao_id : str = Column(String(100), index=True, nullable=True)
     status = Column(String(30), nullable=False, default="Aberto")
     dataAbertura : datetime = Column(DateTime, nullable=False, server_default=func.now())
     dataFechamento : datetime = Column(DateTime, nullable=True)
@@ -29,12 +30,13 @@ class Pedido(Base):
         return f"<Pedido(id={self.idPedido}, mesa={self.idMesa}, status='{self.status}')>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, idMesa: int, idGarcom: int | None = None, status: str = "Aberto") -> "Pedido":
+    def create(cls, db: Session, idRestaurante: int, idMesa: int | None = None, idGarcom: int | None = None, sessao_id: str | None = None, status: str = "Aberto") -> "Pedido":
         """Cria e persiste um novo pedido/comanda."""
         pedido = cls(
             idRestaurante=idRestaurante,
             idMesa=idMesa,
             idGarcom=idGarcom,
+            sessao_id=sessao_id,
             status=status
         )
         db.add(pedido)
