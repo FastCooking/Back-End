@@ -1,11 +1,11 @@
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
 
-from src.database.connection import Base, get_db
 from src.app import app
+from src.database.connection import Base, get_db
 
 # 1. Cria um banco SQLite em memória apenas para testes (super rápido e não afeta o fastcooking.db real)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
