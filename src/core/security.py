@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -18,7 +18,7 @@ security_scheme = HTTPBearer()
 
 def criar_token(idUsuario: int, funcao: str) -> str:
     """Gera um JWT contendo o id e o perfil do funcionário."""
-    expira = datetime.now(timezone.utc) + timedelta(minutes=EXPIRA_EM_MINUTOS)
+    expira = datetime.now(UTC) + timedelta(minutes=EXPIRA_EM_MINUTOS)
     payload = {"sub": str(idUsuario), "funcao": funcao, "exp": expira}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 

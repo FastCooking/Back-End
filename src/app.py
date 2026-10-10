@@ -19,9 +19,9 @@ from src.controllers.AuthController import router as auth_router
 from src.controllers.CardapioController import router as cardapio_router
 from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
+from src.controllers.MesaController import router as mesa_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
-from src.controllers.MesaController import router as mesa_router
 from src.database.connection import test_connection
 
 app = FastAPI(
