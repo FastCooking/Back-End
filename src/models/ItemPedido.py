@@ -31,7 +31,7 @@ class ItemPedido(Base):
     precoUnitario: float = Column(Numeric(10, 2), nullable=False)
     status: str = Column(String(30), nullable=False, default="Pendente")
     observacao: str | None = Column(Text, nullable=True)
-    categoria: str = Column(String(50), nullable=True)
+    categoria: str | None = Column(String(50), nullable=True)
     prioridade: int = Column(Integer, default=1)
 
     # Relacionamentos
@@ -53,6 +53,7 @@ class ItemPedido(Base):
         status: str = "Pendente",
         categoria: str | None = None,
         prioridade: int = 1,
+        commit: bool = True,
     ) -> "ItemPedido":
         """Cria e persiste um novo item de pedido."""
         item = cls(
@@ -63,27 +64,37 @@ class ItemPedido(Base):
             observacao=observacao,
             status=status,
             categoria=categoria,
-            prioridade=prioridade
+            prioridade=prioridade,
         )
         db.add(item)
-        db.commit()
-        db.refresh(item)
+        if commit:
+            db.commit()
+            db.refresh(item)
+        else:
+            db.flush()
         return item
 
     @classmethod
-    def get_by_id(cls, db: Session, idItemPedido: uuid.UUID | str) -> Optional["ItemPedido"]:
+    def get_by_id(
+        cls, db: Session, idItemPedido: uuid.UUID | str
+    ) -> Optional["ItemPedido"]:
         """Busca item pelo ID."""
         return db.query(cls).filter(cls.idItemPedido == idItemPedido).first()
 
     @classmethod
-    def get_by_pedido(cls, db: Session, idPedido: uuid.UUID | str) -> list["ItemPedido"]:
+    def get_by_pedido(
+        cls, db: Session, idPedido: uuid.UUID | str
+    ) -> list["ItemPedido"]:
         """Lista todos os itens de um pedido."""
         return db.query(cls).filter(cls.idPedido == idPedido).all()
 
     @classmethod
-    def get_pendents_kitchen(cls, db: Session, idRestaurante: uuid.UUID | str) -> list["ItemPedido"]:
+    def get_pendents_kitchen(
+        cls, db: Session, idRestaurante: uuid.UUID | str
+    ) -> list["ItemPedido"]:
         """Lista itens com status 'Pendente' ou 'Em preparo' da cozinha de um restaurante."""
         from src.models.Pedido import Pedido
+
         return (
             db.query(cls)
             .join(Pedido, cls.idPedido == Pedido.idPedido)
@@ -95,11 +106,16 @@ class ItemPedido(Base):
             .all()
         )
 
-    def update_stats(self, db: Session, novo_status: str) -> "ItemPedido":
+    def update_stats(
+        self, db: Session, novo_status: str, commit: bool = True
+    ) -> "ItemPedido":
         """Atualiza o status de preparo/entrega do item"""
         self.status = novo_status
-        db.commit()
-        db.refresh(self)
+        if commit:
+            db.commit()
+            db.refresh(self)
+        else:
+            db.flush()
         return self
 
     def update(

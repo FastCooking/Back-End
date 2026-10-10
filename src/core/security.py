@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -19,7 +19,7 @@ security_scheme = HTTPBearer()
 
 def criar_token(idUsuario: uuid.UUID | str, funcao: str) -> str:
     """Gera um JWT contendo o id e o perfil do funcionário."""
-    expira = datetime.now(timezone.utc) + timedelta(minutes=EXPIRA_EM_MINUTOS)
+    expira = datetime.now(UTC) + timedelta(minutes=EXPIRA_EM_MINUTOS)
     payload = {"sub": str(idUsuario), "funcao": funcao, "exp": expira}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -29,17 +29,24 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> Usuario:
     """Decodifica o token e retorna o Usuario autenticado."""
+    return get_user_from_token(credenciais.credentials, db)
+
+
+def get_user_from_token(token: str, db: Session) -> Usuario:
+    """Valida um JWT sem depender do transporte HTTP Authorization."""
     excecao_credenciais = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Não foi possível validar as credenciais.",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(credenciais.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        if not SECRET_KEY:
+            raise excecao_credenciais
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         idUsuario = payload.get("sub")
         if idUsuario is None:
             raise excecao_credenciais
-    except JWTError:
+    except (JWTError, TypeError, ValueError):
         raise excecao_credenciais
 
     try:
@@ -60,6 +67,7 @@ def get_current_user(
 
 def exigir_funcao(*funcoes_permitidas: str):
     """Dependency factory: restringe a rota às funções informadas (RBAC)."""
+
     def verificador(usuario: Usuario = Depends(get_current_user)) -> Usuario:
         if usuario.funcao not in funcoes_permitidas:
             raise HTTPException(
@@ -67,4 +75,5 @@ def exigir_funcao(*funcoes_permitidas: str):
                 detail="Você não tem permissão para acessar este recurso.",
             )
         return usuario
+
     return verificador

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import Column, DateTime, ForeignKey, String, func, text
@@ -35,28 +35,39 @@ class Pedido(Base):
     )
     sessao_id: str | None = Column(String(100), index=True, nullable=True)
     status: str = Column(String(30), nullable=False, default="Aberto")
-    dataAbertura: datetime = Column(DateTime, nullable=False, server_default=func.now())
+    dataAbertura: datetime = Column(
+        DateTime, nullable=False, default=datetime.now, server_default=func.now()
+    )
     dataFechamento: datetime | None = Column(DateTime, nullable=True)
 
     # Relacionamentos
     restaurante = relationship("Restaurante", back_populates="pedidos")
     mesa = relationship("Mesa", back_populates="pedidos")
-    garcom = relationship("Usuario", back_populates="pedidos_atendidos", foreign_keys=[idGarcom])
-    itens = relationship("ItemPedido", back_populates="pedido", cascade="all, delete-orphan")
-    pagamentos = relationship("Pagamento", back_populates="pedido", cascade="all, delete-orphan")
+    garcom = relationship(
+        "Usuario", back_populates="pedidos_atendidos", foreign_keys=[idGarcom]
+    )
+    itens = relationship(
+        "ItemPedido", back_populates="pedido", cascade="all, delete-orphan"
+    )
+    pagamentos = relationship(
+        "Pagamento", back_populates="pedido", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
-        return f"<Pedido(id={self.idPedido}, mesa={self.idMesa}, status='{self.status}')>"
+        return (
+            f"<Pedido(id={self.idPedido}, mesa={self.idMesa}, status='{self.status}')>"
+        )
 
     @classmethod
     def create(
         cls,
         db: Session,
         idRestaurante: uuid.UUID | str,
-        idMesa: uuid.UUID | str | None = None,
+        idMesa: uuid.UUID | str,
         idGarcom: uuid.UUID | str | None = None,
         sessao_id: str | None = None,
         status: str = "Aberto",
+        commit: bool = True,
     ) -> "Pedido":
         """Cria e persiste um novo pedido/comanda."""
         pedido = cls(
@@ -64,11 +75,14 @@ class Pedido(Base):
             idMesa=idMesa,
             idGarcom=idGarcom,
             sessao_id=sessao_id,
-            status=status
+            status=status,
         )
         db.add(pedido)
-        db.commit()
-        db.refresh(pedido)
+        if commit:
+            db.commit()
+            db.refresh(pedido)
+        else:
+            db.flush()
         return pedido
 
     @classmethod
@@ -77,12 +91,18 @@ class Pedido(Base):
         return db.query(cls).filter(cls.idPedido == idPedido).first()
 
     @classmethod
-    def get_active_for_table(cls, db: Session, idMesa: uuid.UUID | str) -> Optional["Pedido"]:
+    def get_active_for_table(
+        cls, db: Session, idMesa: uuid.UUID | str
+    ) -> Optional["Pedido"]:
         """Busca o pedido atualmente aberto/em andamento para uma mesa."""
-        return db.query(cls).filter(
-            cls.idMesa == idMesa,
-            cls.status.notin_(["Fechado", "Cancelado"]),
-        ).first()
+        return (
+            db.query(cls)
+            .filter(
+                cls.idMesa == idMesa,
+                cls.status.notin_(["Fechado", "Cancelado"]),
+            )
+            .first()
+        )
 
     @classmethod
     def get_all_by_restaurant(
@@ -94,16 +114,25 @@ class Pedido(Base):
             query = query.filter(cls.status == status)
         return query.order_by(cls.dataAbertura.desc()).all()
 
-    def update_stats(self, db: Session, novo_status: str, dataFechamento: datetime | None = None) -> "Pedido":
+    def update_stats(
+        self,
+        db: Session,
+        novo_status: str,
+        dataFechamento: datetime | None = None,
+        commit: bool = True,
+    ) -> "Pedido":
         """Atualiza o status do pedido e opcionalmente a data de fechamento."""
         self.status = novo_status
         if dataFechamento is not None:
             self.dataFechamento = dataFechamento
         elif novo_status in ("Fechado", "Cancelado") and not self.dataFechamento:
-            self.dataFechamento = datetime.now(timezone.utc)
+            self.dataFechamento = datetime.now(UTC)
 
-        db.commit()
-        db.refresh(self)
+        if commit:
+            db.commit()
+            db.refresh(self)
+        else:
+            db.flush()
         return self
 
     def update(

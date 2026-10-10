@@ -38,10 +38,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
-):
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Trata erros de validação: retorna 400 para campos obrigatórios ausentes e 422 para dados inválidos."""
     has_missing = any(err.get("type") == "missing" for err in exc.errors())
     status_code = (
@@ -56,6 +55,7 @@ async def validation_exception_handler(
             "detail": jsonable_encoder(exc.errors()),
         },
     )
+
 
 app.include_router(usuario_router)
 app.include_router(restaurante_router)
@@ -105,4 +105,6 @@ if __name__ == "__main__":
     from src.database.connection import Base, engine
     Base.metadata.create_all(bind=engine)
     test_connection()
-    uvicorn.run("src.app:app", host="127.0.0.1", port=int(varsEnv["SERVER_PORT"]), reload=True)
+    uvicorn.run(
+        "src.app:app", host="127.0.0.1", port=int(varsEnv["SERVER_PORT"]), reload=True
+    )
