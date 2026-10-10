@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -5,7 +7,7 @@ class EstoqueCreateDTO(BaseModel):
     nome: str = Field(..., min_length=1, max_length=150)
     quantidadeEmEstoque: float = Field(..., ge=0)
     quantidadeMinima: float = Field(..., ge=0)
-    idRestaurante: int = Field(default=1, gt=0)
+    idRestaurante: uuid.UUID | None = Field(default=None)
     unidadeMedida: str = Field(default="UN", min_length=1, max_length=20)
     pathImage: str | None = None
 
@@ -19,11 +21,11 @@ class EstoqueCreateDTO(BaseModel):
 
 
 class EstoqueResponseDTO(BaseModel):
-    idEstoque: int
+    idEstoque: uuid.UUID
     nome: str
     quantidadeEmEstoque: float
     quantidadeMinima: float
-    idRestaurante: int = 1
+    idRestaurante: uuid.UUID
     unidadeMedida: str = "UN"
     pathImage: str | None = None
 

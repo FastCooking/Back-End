@@ -54,6 +54,12 @@ class AuthService:
                 detail="Usuário inativo.",
             )
 
+        if usuario.restaurante and not usuario.restaurante.status:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Restaurante inativo ou desativado.",
+            )
+
         # Login bem-sucedido: reseta tentativas
         usuario.tentativasFalhas = 0
         usuario.bloqueadoAte = None

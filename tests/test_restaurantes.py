@@ -268,6 +268,152 @@ def test_restaurant():
     print("=" * 70)
 
 
+def test_restaurante_com_usuario_transacional():
+    """Testa cadastro atômico (Restaurante + Usuário inicial) com sucesso e rollback em erro."""
+    ts = int(time.time() * 1000)
+    cnpj = _gerar_cnpj_valido(ts)
+    email_rest = f"rest_atomico_{ts}@teste.com"
+    email_user = f"gerente_{ts}@teste.com"
+
+    # 1. Criação com sucesso
+    payload = {
+        "restaurante": {
+            "nome": f"Restaurante Atomico {ts}",
+            "cnpj": cnpj,
+            "telefone": "(11) 98888-7777",
+            "email": email_rest,
+            "cep": "01001-000",
+            "status": True,
+        },
+        "usuario": {
+            "nome": f"Gerente Atomico {ts}",
+            "email": email_user,
+            "senha": "SenhaGerente@123",
+            "funcao": "Gerente",
+        },
+    }
+
+    resp = client.post("/restaurantes/com-usuario", json=payload)
+    assert resp.status_code == 201, f"Erro ao criar restaurante com usuario: {resp.text}"
+    dados = resp.json()
+
+    rest_id = dados["restaurante"]["idRestaurante"]
+    user_id = dados["usuario"]["idUsuario"]
+    assert rest_id is not None
+    assert user_id is not None
+    assert dados["usuario"]["idRestaurante"] == rest_id
+    assert dados["usuario"]["funcao"] == "Gerente"
+
+    # 2. Teste de Rollback: Erro de e-mail de usuário duplicado
+    ts2 = int(time.time() * 1000) + 1
+    cnpj2 = _gerar_cnpj_valido(ts2)
+    email_rest2 = f"rest_rollback_{ts2}@teste.com"
+
+    payload_erro = {
+        "restaurante": {
+            "nome": f"Restaurante Rollback {ts2}",
+            "cnpj": cnpj2,
+            "telefone": "(11) 97777-6666",
+            "email": email_rest2,
+            "cep": "01001-000",
+            "status": True,
+        },
+        "usuario": {
+            "nome": f"Gerente Duplicado {ts2}",
+            "email": email_user,  # Email já cadastrado acima!
+            "senha": "SenhaGerente@123",
+            "funcao": "Gerente",
+        },
+    }
+
+    resp_erro = client.post("/restaurantes/com-usuario", json=payload_erro)
+    assert resp_erro.status_code == 409
+
+    # Garante que o restaurante do payload_erro NÃO foi persistido no banco
+    session = SessionLocal()
+    try:
+        from src.models.Restaurante import Restaurante
+        rest_nao_persistido = session.query(Restaurante).filter(Restaurante.email == email_rest2).first()
+        assert rest_nao_persistido is None, "Restaurante foi persistido mesmo com falha no usuário (quebra de atomicidade)!"
+    finally:
+        session.close()
+
+
+def test_soft_delete_restaurante_em_cascata():
+    """Testa se a deleção/anonimização do restaurante remove/anonimiza em cascata seus usuários e bloqueia auth."""
+    ts = int(time.time() * 1000) + 10
+    cnpj = _gerar_cnpj_valido(ts)
+    email_rest = f"rest_delete_{ts}@teste.com"
+    email_user = f"gerente_delete_{ts}@teste.com"
+    senha_user = "SenhaForte@2026"
+
+    payload = {
+        "restaurante": {
+            "nome": f"Restaurante Cascade {ts}",
+            "cnpj": cnpj,
+            "telefone": "(11) 98888-0000",
+            "email": email_rest,
+            "cep": "01001-000",
+            "status": True,
+        },
+        "usuario": {
+            "nome": f"Gerente Cascade {ts}",
+            "email": email_user,
+            "senha": senha_user,
+            "funcao": "Gerente",
+        },
+    }
+
+    resp = client.post("/restaurantes/com-usuario", json=payload)
+    assert resp.status_code == 201
+    dados = resp.json()
+    rest_id = dados["restaurante"]["idRestaurante"]
+    user_id = dados["usuario"]["idUsuario"]
+
+    # Verifica que usuário consegue fazer login antes do soft delete
+    resp_login = client.post("/auth/login", json={"email": email_user, "senha": senha_user})
+    assert resp_login.status_code == 200
+    token = resp_login.json()["access_token"]
+
+    # Deleta/anonimiza o restaurante
+    resp_del = client.delete(f"/restaurantes/{rest_id}")
+    assert resp_del.status_code == 204
+
+    # 1. Verifica anonimização e inativação do Restaurante
+    resp_rest = client.get(f"/restaurantes/{rest_id}")
+    assert resp_rest.status_code == 200
+    assert resp_rest.json()["nome"].startswith("RESTAURANTE REMOVIDO")
+    assert resp_rest.json()["status"] is False
+
+    # 2. Verifica anonimização e inativação em CASCATA do Usuário
+    resp_user = client.get(f"/usuarios/{user_id}")
+    assert resp_user.status_code == 200
+    assert resp_user.json()["nome"].startswith("USUARIO REMOVIDO")
+    assert resp_user.json()["email"].startswith("removido_")
+    assert resp_user.json()["status"] is False
+
+    # 3. Tenta autenticar após o soft delete com o email original -> deve falhar
+    resp_login_pos = client.post("/auth/login", json={"email": email_user, "senha": senha_user})
+    assert resp_login_pos.status_code in (401, 403)
+
+    # 4. Tenta usar o token JWT anterior em uma rota protegida (ex: POST /usuarios) -> deve ser recusado (401)
+    resp_rota_protegida = client.post(
+        "/usuarios",
+        json={
+            "idRestaurante": rest_id,
+            "nome": "Tentativa Invalida",
+            "email": f"teste_{ts}@invalido.com",
+            "senha": "SenhaInvalida@123",
+            "funcao": "Garcom",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp_rota_protegida.status_code == 401
+
+
 if __name__ == "__main__":
     run_restaurante_tests()
     test_restaurant()
+    test_restaurante_com_usuario_transacional()
+    test_soft_delete_restaurante_em_cascata()
+

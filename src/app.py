@@ -20,6 +20,7 @@ from src.controllers.CardapioController import router as cardapio_router
 from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
 from src.controllers.MesaController import router as mesa_router
+from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
 from src.database.connection import test_connection
@@ -38,10 +39,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
-):
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Trata erros de validação: retorna 400 para campos obrigatórios ausentes e 422 para dados inválidos."""
     has_missing = any(err.get("type") == "missing" for err in exc.errors())
     status_code = (
@@ -57,6 +57,7 @@ async def validation_exception_handler(
         },
     )
 
+
 app.include_router(usuario_router)
 app.include_router(restaurante_router)
 app.include_router(auth_router)
@@ -64,6 +65,7 @@ app.include_router(cardapio_router)
 app.include_router(estoque_router)
 app.include_router(ficha_tecnica_router)
 app.include_router(mesa_router)
+app.include_router(pedido_router)
 
 
 @app.get("/", tags=["Health Check"])
@@ -102,5 +104,9 @@ def envTest(env: dict):
 if __name__ == "__main__":
     varsEnv = getVarsEnv()
     envTest(varsEnv)
+    from src.database.connection import Base, engine
+    Base.metadata.create_all(bind=engine)
     test_connection()
-    uvicorn.run("src.app:app", host="127.0.0.1", port=int(varsEnv["SERVER_PORT"]), reload=True)
+    uvicorn.run(
+        "src.app:app", host="127.0.0.1", port=int(varsEnv["SERVER_PORT"]), reload=True
+    )

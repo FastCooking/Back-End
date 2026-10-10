@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy.orm import Session
 
 from src.models.FichaTecnica import FichaTecnica
@@ -8,7 +10,10 @@ class FichaTecnicaRepository:
         self.db = db
 
     def create(
-        self, idCardapio: int, idEstoque: int, quantidadeNecessaria: float
+        self,
+        idCardapio: uuid.UUID | str,
+        idEstoque: uuid.UUID | str,
+        quantidadeNecessaria: float,
     ) -> FichaTecnica:
         ficha = FichaTecnica(
             idCardapio=idCardapio,
@@ -21,7 +26,9 @@ class FichaTecnicaRepository:
         return ficha
 
     def replace_for_cardapio(
-        self, idCardapio: int, insumos: list[tuple[int, float]]
+        self,
+        idCardapio: uuid.UUID | str,
+        insumos: list[tuple[uuid.UUID | str, float]],
     ) -> list[FichaTecnica]:
         try:
             self.db.query(FichaTecnica).filter(
@@ -47,22 +54,23 @@ class FichaTecnicaRepository:
             self.db.rollback()
             raise
 
-    def get_by_id(self, idFichaTecnica: int) -> FichaTecnica | None:
+    def get_by_id(self, idFichaTecnica: uuid.UUID | str) -> FichaTecnica | None:
         return (
             self.db.query(FichaTecnica)
             .filter(FichaTecnica.idFichaTecnica == idFichaTecnica)
             .first()
         )
 
-    def get_by_cardapio(self, idCardapio: int) -> list[FichaTecnica]:
+    def get_by_cardapio(self, idCardapio: uuid.UUID | str) -> list[FichaTecnica]:
         return (
             self.db.query(FichaTecnica)
             .filter(FichaTecnica.idCardapio == idCardapio)
-            .order_by(FichaTecnica.idEstoque.asc())
             .all()
         )
 
-    def exists_for_cardapio_and_insumo(self, idCardapio: int, idEstoque: int) -> bool:
+    def exists_for_cardapio_and_insumo(
+        self, idCardapio: uuid.UUID | str, idEstoque: uuid.UUID | str
+    ) -> bool:
         return (
             self.db.query(FichaTecnica)
             .filter(

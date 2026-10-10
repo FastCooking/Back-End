@@ -1,8 +1,10 @@
+import uuid
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class CardapioCreate(BaseModel):
-    idRestaurante: int | None = Field(default=1, gt=0)
+    idRestaurante: uuid.UUID | None = Field(default=None)
     nome: str = Field(..., min_length=1, max_length=150)
     preco: float = Field(..., gt=0)
     categoria: str = Field(..., min_length=1, max_length=50)
@@ -21,8 +23,8 @@ class CardapioUpdate(BaseModel):
 class CardapioResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    idCardapio: int
-    idRestaurante: int
+    idCardapio: uuid.UUID
+    idRestaurante: uuid.UUID
     nome: str
     preco: float
     categoria: str

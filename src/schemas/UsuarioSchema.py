@@ -1,4 +1,5 @@
 import re
+import uuid
 from typing import Any, Literal
 
 from pydantic import (
@@ -45,7 +46,7 @@ FuncaoUsuario = Literal["Garcom", "Cozinheiro", "Gerente", "Adm"]
 
 
 class UsuarioBase(BaseModel):
-    idRestaurante: int | None = Field(default=None, description="ID do Restaurante vinculado")
+    idRestaurante: uuid.UUID | None = Field(default=None, description="ID do Restaurante vinculado")
     nome: str = Field(..., min_length=2, max_length=255, description="Nome completo do usuário")
     cpf: str | None = Field(default=None, description="CPF válido do usuário")
     email: EmailStr = Field(..., description="E-mail único do usuário")
@@ -126,8 +127,8 @@ class UsuarioStatusUpdate(BaseModel):
 
 
 class UsuarioResponse(BaseModel):
-    idUsuario: int
-    idRestaurante: int
+    idUsuario: uuid.UUID
+    idRestaurante: uuid.UUID
     nome: str
     cpf: str
     email: str
