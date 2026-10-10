@@ -13,3 +13,4 @@ httpx
 python-jose[cryptography]
 psycopg2-binary>=2.9.0
 pytest
+qrcode[pil]

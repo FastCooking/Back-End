@@ -18,10 +18,25 @@ jobs:
     name: Lint & Test (Dev)
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/dev' || github.base_ref == 'develop' || github.base_ref == 'dev' || github.head_ref == 'develop' || github.head_ref == 'dev'
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: fastcooking_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     environment: Devlopment
 
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+      DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/fastcooking_test
       SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
@@ -53,10 +68,25 @@ jobs:
     name: Lint & Test (Prod)
     if: (github.ref == 'refs/heads/main' || github.base_ref == 'main') && !(github.head_ref == 'develop' || github.head_ref == 'dev')
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: fastcooking_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     environment: Production
 
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+      DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/fastcooking_test
       SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}

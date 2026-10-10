@@ -19,6 +19,7 @@ from src.controllers.AuthController import router as auth_router
 from src.controllers.CardapioController import router as cardapio_router
 from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
+from src.controllers.MesaController import router as mesa_router
 from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
@@ -63,6 +64,7 @@ app.include_router(auth_router)
 app.include_router(cardapio_router)
 app.include_router(estoque_router)
 app.include_router(ficha_tecnica_router)
+app.include_router(mesa_router)
 app.include_router(pedido_router)
 
 
