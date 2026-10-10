@@ -1,9 +1,11 @@
 import secrets
+import uuid
 from datetime import datetime
 from typing import Optional
 
 import bcrypt
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
 from src.database.connection import Base
@@ -15,14 +17,23 @@ class Usuario(Base):
     """
     __tablename__ = "Usuarios"
 
-    idUsuario : int = Column(Integer, primary_key=True, autoincrement=True)
-    idRestaurante : int = Column(Integer, ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    nome : str = Column(String(255), nullable=False)
-    cpf : str = Column(String(14), unique=True, nullable=False)
-    email : str = Column(String(255), unique=True, nullable=False)
-    senha : str = Column(String(255), nullable=False)
-    funcao : str = Column(String(50), nullable=False)
-    status : bool = Column(Boolean, nullable=False, default=True )
+    idUsuario: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    idRestaurante: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"),
+        nullable=False,
+    )
+    nome: str = Column(String(255), nullable=False)
+    cpf: str = Column(String(14), unique=True, nullable=False)
+    email: str = Column(String(255), unique=True, nullable=False)
+    senha: str = Column(String(255), nullable=False)
+    funcao: str = Column(String(50), nullable=False)
+    status: bool = Column(Boolean, nullable=False, default=True)
     tentativasFalhas: int = Column(Integer, nullable=False, default=0)
     bloqueadoAte: "datetime | None" = Column(DateTime, nullable=True)
 
@@ -33,7 +44,17 @@ class Usuario(Base):
         return f"<Usuario(id={self.idUsuario}, nome='{self.nome}', funcao='{self.funcao}')>"
 
     @classmethod
-    def create(cls, db: Session, idRestaurante: int, nome: str, cpf: str, email: str, senha: str, funcao: str) -> "Usuario":
+    def create(
+        cls,
+        db: Session,
+        idRestaurante: uuid.UUID | str,
+        nome: str,
+        cpf: str,
+        email: str,
+        senha: str,
+        funcao: str,
+        commit: bool = True,
+    ) -> "Usuario":
         """Cria e persiste um novo funcionário/usuário."""
         usuario = cls(
             idRestaurante=idRestaurante,
@@ -41,27 +62,30 @@ class Usuario(Base):
             cpf=cpf,
             email=email,
             senha=senha,
-            funcao=funcao
+            funcao=funcao,
         )
         
         db.add(usuario)
-        db.commit()
-        db.refresh(usuario)
+        if commit:
+            db.commit()
+            db.refresh(usuario)
         
         return usuario
 
     @classmethod
-    def get_by_id(cls, db: Session, idUsuario: int) -> Optional["Usuario"]:
+    def get_by_id(cls, db: Session, idUsuario: uuid.UUID | str) -> Optional["Usuario"]:
         """Busca funcionário por ID."""
         return db.query(cls).filter(cls.idUsuario == idUsuario).first()
 
     @classmethod
     def get_by_email(cls, db: Session, email: str) -> Optional["Usuario"]:
         """Busca funcionário por e-mail único."""
-        return db.query(cls).filter(cls.idUsuario != None, cls.email == email).first()
+        return db.query(cls).filter(cls.idUsuario.isnot(None), cls.email == email).first()
 
     @classmethod
-    def get_all_by_restaurante(cls, db: Session, idRestaurante: int, funcao: str | None = None) -> list["Usuario"]:
+    def get_all_by_restaurante(
+        cls, db: Session, idRestaurante: uuid.UUID | str, funcao: str | None = None
+    ) -> list["Usuario"]:
         """Lista funcionários de um restaurante, opcionalmente filtrados por função."""
         query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
         if funcao:
@@ -73,7 +97,15 @@ class Usuario(Base):
         """Busca funcionário por CPF."""
         return db.query(cls).filter(cls.cpf == cpf).first()
 
-    def update(self, db: Session, nome: str | None = None,  cpf: str | None = None, email: str | None = None, senha: str | None = None, funcao: str | None = None) -> "Usuario":
+    def update(
+        self,
+        db: Session,
+        nome: str | None = None,
+        cpf: str | None = None,
+        email: str | None = None,
+        senha: str | None = None,
+        funcao: str | None = None,
+    ) -> "Usuario":
         """Atualiza os dados de um funcionário."""
         if nome is not None:
             self.nome = nome
@@ -113,7 +145,7 @@ class Usuario(Base):
         except (ValueError, TypeError):
             return False
 
-    def delete(self, db: Session) -> "Usuario":
+    def delete(self, db: Session, commit: bool = True) -> "Usuario":
         """Anonimiza e desativa o funcionário preservando a unicidade das restrições de banco."""
         codigo = secrets.token_hex(5)
         self.nome = f"USUARIO REMOVIDO {self.idUsuario}"
@@ -122,6 +154,7 @@ class Usuario(Base):
         self.senha = bcrypt.hashpw(secrets.token_bytes(16), bcrypt.gensalt()).decode("utf-8")
         self.status = False
 
-        db.commit()
-        db.refresh(self)
+        if commit:
+            db.commit()
+            db.refresh(self)
         return self

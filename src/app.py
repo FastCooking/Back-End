@@ -102,6 +102,8 @@ def envTest(env: dict):
 if __name__ == "__main__":
     varsEnv = getVarsEnv()
     envTest(varsEnv)
+    from src.database.connection import Base, engine
+    Base.metadata.create_all(bind=engine)
     test_connection()
     uvicorn.run(
         "src.app:app", host="127.0.0.1", port=int(varsEnv["SERVER_PORT"]), reload=True

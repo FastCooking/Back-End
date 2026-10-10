@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
@@ -16,7 +17,7 @@ EXPIRA_EM_MINUTOS = 60
 security_scheme = HTTPBearer()
 
 
-def criar_token(idUsuario: int, funcao: str) -> str:
+def criar_token(idUsuario: uuid.UUID | str, funcao: str) -> str:
     """Gera um JWT contendo o id e o perfil do funcionário."""
     expira = datetime.now(UTC) + timedelta(minutes=EXPIRA_EM_MINUTOS)
     payload = {"sub": str(idUsuario), "funcao": funcao, "exp": expira}
@@ -45,12 +46,20 @@ def get_user_from_token(token: str, db: Session) -> Usuario:
         idUsuario = payload.get("sub")
         if idUsuario is None:
             raise excecao_credenciais
-        idUsuario = int(idUsuario)
     except (JWTError, TypeError, ValueError):
         raise excecao_credenciais
 
-    usuario = Usuario.get_by_id(db, idUsuario)
-    if usuario is None or not usuario.status:
+    try:
+        id_uuid = uuid.UUID(str(idUsuario))
+    except (ValueError, TypeError):
+        raise excecao_credenciais
+
+    usuario = Usuario.get_by_id(db, id_uuid)
+    if (
+        usuario is None
+        or not usuario.status
+        or (usuario.restaurante and not usuario.restaurante.status)
+    ):
         raise excecao_credenciais
 
     return usuario

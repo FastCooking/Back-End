@@ -1,3 +1,5 @@
+import uuid
+
 import bcrypt
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -91,7 +93,7 @@ class UsuarioService:
             funcao=data.funcao,
         )
 
-    def get_by_id(self, idUsuario: int) -> Usuario:
+    def get_by_id(self, idUsuario: uuid.UUID | str) -> Usuario:
         """Busca um usuário pelo ID ou levanta 404."""
         usuario = Usuario.get_by_id(self.db, idUsuario)
         if not usuario:
@@ -103,7 +105,7 @@ class UsuarioService:
 
     def list_all(
         self,
-        idRestaurante: int | None = None,
+        idRestaurante: uuid.UUID | str | None = None,
         funcao: str | None = None,
         status_filtro: bool | None = None,
         busca: str | None = None,
@@ -129,13 +131,13 @@ class UsuarioService:
             )
 
         return (
-            query.order_by(Usuario.idUsuario.asc())
+            query.order_by(Usuario.nome.asc())
             .offset(skip)
             .limit(limit)
             .all()
         )
 
-    def update(self, idUsuario: int, data: UsuarioUpdate) -> Usuario:
+    def update(self, idUsuario: uuid.UUID | str, data: UsuarioUpdate) -> Usuario:
         """Atualiza dados cadastrais de um usuário com validações."""
         usuario = self.get_by_id(idUsuario)
 
@@ -182,7 +184,7 @@ class UsuarioService:
             funcao=data.funcao,
         )
 
-    def change_status(self, idUsuario: int, novo_status: bool) -> Usuario:
+    def change_status(self, idUsuario: uuid.UUID | str, novo_status: bool) -> Usuario:
         """Altera o status de um usuário delegando aos métodos able/disable do Model."""
         usuario = self.get_by_id(idUsuario)
         if novo_status:
@@ -191,7 +193,7 @@ class UsuarioService:
             usuario.disable(self.db)
         return usuario
 
-    def delete(self, idUsuario: int) -> bool:
+    def delete(self, idUsuario: uuid.UUID | str) -> bool:
         """Remove o usuário através do método delete do Model."""
         usuario = self.get_by_id(idUsuario)
         return usuario.delete(self.db)

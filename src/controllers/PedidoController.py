@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
 from fastapi import status as http_status
@@ -35,7 +36,7 @@ def criar_pedido(
 
 @router.post("/{idPedido}/itens", status_code=http_status.HTTP_201_CREATED)
 def adicionar_itens_ao_pedido(
-    idPedido: int,
+    idPedido: uuid.UUID,
     itens: list[PedidoItemCreate],
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -49,7 +50,7 @@ def adicionar_itens_ao_pedido(
 
 @router.patch("/itens/{idItemPedido}/status")
 def alterar_status_item(
-    idItemPedido: int,
+    idItemPedido: uuid.UUID,
     dados: ItemPedidoStatusUpdate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -69,6 +70,7 @@ def obter_fila(
     return PedidoService(db).queue_snapshot(usuario)
 
 
+@router.websocket("/kds/ws")
 @router.websocket("/ws")
 async def pedidos_websocket(
     websocket: WebSocket,

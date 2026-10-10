@@ -1,5 +1,6 @@
 import time
 from contextlib import ExitStack
+from uuid import UUID
 
 import pytest
 from fastapi import WebSocketDisconnect
@@ -163,8 +164,8 @@ def _create_order(client: TestClient, ids: dict, waiter_id: int) -> dict:
         "/pedidos",
         headers={"Authorization": f"Bearer {_token(waiter_id, 'Garcom')}"},
         json={
-            "idMesa": ids["table"],
-            "itens": [{"idCardapio": ids["menu"], "quantidade": 2}],
+            "idMesa": str(ids["table"]),
+            "itens": [{"idCardapio": str(ids["menu"]), "quantidade": 2}],
         },
     )
     assert response.status_code == 201, response.text
@@ -273,7 +274,7 @@ def test_invalid_status_transition_is_rejected_without_queue_event(
         assert realtime_hub.queue_version == version_before
 
     with session_factory() as db:
-        item = db.query(ItemPedido).filter_by(idItemPedido=item_id).one()
+        item = db.query(ItemPedido).filter_by(idItemPedido=UUID(item_id)).one()
         assert item.status == "Pendente"
 
 
@@ -333,7 +334,7 @@ def test_failed_commit_does_not_publish_item_event(realtime_environment, monkeyp
             )
         assert realtime_hub.queue_version == version_before
         with session_factory() as db:
-            item = db.query(ItemPedido).filter_by(idItemPedido=item_id).one()
+            item = db.query(ItemPedido).filter_by(idItemPedido=UUID(item_id)).one()
             assert item.status == "Pendente"
 
 

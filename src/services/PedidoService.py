@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Iterable
 
 from fastapi import HTTPException, status
@@ -40,6 +41,7 @@ class PedidoService:
                 idRestaurante=usuario.idRestaurante,
                 idMesa=mesa.idMesa,
                 idGarcom=usuario.idUsuario,
+                sessao_id=dados.sessao_id,
                 commit=False,
             )
             itens = [
@@ -50,6 +52,7 @@ class PedidoService:
                     quantidade=item.quantidade,
                     precoUnitario=float(cardapio.preco),
                     observacao=item.observacao,
+                    categoria=cardapio.categoria,
                     commit=False,
                 )
                 for item, cardapio in zip(dados.itens, cardapios, strict=True)
@@ -71,7 +74,7 @@ class PedidoService:
         }
 
     def add_items(
-        self, idPedido: int, itens: list[PedidoItemCreate], usuario: Usuario
+        self, idPedido: uuid.UUID, itens: list[PedidoItemCreate], usuario: Usuario
     ) -> dict:
         pedido = self._get_assigned_order(idPedido, usuario)
         cardapios = self._validate_menu_items(itens, usuario.idRestaurante)
@@ -84,6 +87,7 @@ class PedidoService:
                     quantidade=item.quantidade,
                     precoUnitario=float(cardapio.preco),
                     observacao=item.observacao,
+                    categoria=cardapio.categoria,
                     commit=False,
                 )
                 for item, cardapio in zip(itens, cardapios, strict=True)
@@ -103,7 +107,7 @@ class PedidoService:
         }
 
     def update_item_status(
-        self, idItemPedido: int, novo_status: str, usuario: Usuario
+        self, idItemPedido: uuid.UUID, novo_status: str, usuario: Usuario
     ) -> dict:
         item = (
             self.db.query(ItemPedido)
@@ -176,7 +180,7 @@ class PedidoService:
                 assigned_waiter_id=event["assignedWaiterId"],
             )
 
-    def _get_assigned_order(self, idPedido: int, usuario: Usuario) -> Pedido:
+    def _get_assigned_order(self, idPedido: uuid.UUID, usuario: Usuario) -> Pedido:
         pedido = (
             self.db.query(Pedido)
             .filter(
@@ -194,7 +198,7 @@ class PedidoService:
         return pedido
 
     def _validate_menu_items(
-        self, itens: list[PedidoItemCreate], idRestaurante: int
+        self, itens: list[PedidoItemCreate], idRestaurante: uuid.UUID
     ) -> list[Cardapio]:
         cardapios: list[Cardapio] = []
         for item in itens:
@@ -229,6 +233,7 @@ class PedidoService:
     def _pedido_data(pedido: Pedido) -> dict:
         return {
             "idPedido": pedido.idPedido,
+            "sessao_id": pedido.sessao_id,
             "idRestaurante": pedido.idRestaurante,
             "idMesa": pedido.idMesa,
             "idGarcom": pedido.idGarcom,
@@ -238,13 +243,15 @@ class PedidoService:
     @staticmethod
     def _item_data(item: ItemPedido) -> dict:
         return {
-            "idItemPedido": item.idItemPedido,
-            "idPedido": item.idPedido,
-            "idCardapio": item.idCardapio,
+            "idItemPedido": str(item.idItemPedido),
+            "idPedido": str(item.idPedido),
+            "idCardapio": str(item.idCardapio),
             "quantidade": item.quantidade,
             "precoUnitario": float(item.precoUnitario),
             "status": item.status,
             "observacao": item.observacao,
+            "categoria": item.categoria,
+            "prioridade": item.prioridade,
         }
 
     @classmethod

@@ -1,7 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketDisconnect
@@ -12,8 +12,8 @@ SEND_TIMEOUT_SECONDS = 0.4
 @dataclass(eq=False)
 class Subscription:
     websocket: WebSocket
-    restaurant_id: int
-    user_id: int
+    restaurant_id: UUID | str | int
+    user_id: UUID | str | int
     role: str
     sequence: int = 0
 
@@ -33,8 +33,8 @@ class RealtimeHub:
     async def connect_and_sync(
         self,
         websocket: WebSocket,
-        restaurant_id: int,
-        user_id: int,
+        restaurant_id: UUID | str | int,
+        user_id: UUID | str | int,
         role: str,
         snapshot_factory,
     ) -> None:
@@ -74,9 +74,9 @@ class RealtimeHub:
     async def publish_item_event(
         self,
         event_type: str,
-        restaurant_id: int,
+        restaurant_id: UUID | str | int,
         item_data: dict,
-        assigned_waiter_id: int | None,
+        assigned_waiter_id: UUID | str | int | None,
     ) -> None:
         """Publish a mutation followed by a queue invalidation event."""
         async with self._lock:
@@ -140,7 +140,7 @@ class RealtimeHub:
     def _event(
         self,
         event_type: str,
-        restaurant_id: int,
+        restaurant_id: UUID | str | int,
         queue_version: int,
         **data,
     ) -> dict:
@@ -149,7 +149,7 @@ class RealtimeHub:
             "eventId": str(uuid4()),
             "queueVersion": queue_version,
             "occurredAt": datetime.now(UTC).isoformat(),
-            "restaurantId": restaurant_id,
+            "restaurantId": str(restaurant_id),
             **data,
         }
 

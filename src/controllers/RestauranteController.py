@@ -1,8 +1,12 @@
+import uuid
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from src.database.connection import get_db
 from src.schemas.RestauranteSchema import (
+    RestauranteComUsuarioCreate,
+    RestauranteComUsuarioResponse,
     RestauranteCreate,
     RestauranteResponse,
     RestauranteStatusUpdate,
@@ -11,6 +15,22 @@ from src.schemas.RestauranteSchema import (
 from src.services.RestauranteService import RestauranteService
 
 router = APIRouter(prefix="/restaurantes", tags=["Restaurantes"])
+
+
+@router.post(
+    "/com-usuario",
+    response_model=RestauranteComUsuarioResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Criar novo restaurante com usuário inicial/gerente",
+    description="Cadastra um restaurante e seu usuário/gerente inicial dentro de uma única transação atômica.",
+)
+def criar_restaurante_com_usuario(
+    dados: RestauranteComUsuarioCreate,
+    db: Session = Depends(get_db),
+) -> RestauranteComUsuarioResponse:
+    service = RestauranteService(db)
+    restaurante, usuario = service.create_with_user(dados)
+    return RestauranteComUsuarioResponse(restaurante=restaurante, usuario=usuario)
 
 
 @router.post(
@@ -65,7 +85,7 @@ def listar_restaurantes(
     description="Retorna os dados cadastrais de um restaurante específico.",
 )
 def obter_restaurante_por_id(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     db: Session = Depends(get_db),
 ) -> RestauranteResponse:
     service = RestauranteService(db)
@@ -80,7 +100,7 @@ def obter_restaurante_por_id(
     description="Atualiza os dados de um restaurante existente com validações.",
 )
 def atualizar_restaurante(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     dados: RestauranteUpdate,
     db: Session = Depends(get_db),
 ) -> RestauranteResponse:
@@ -96,7 +116,7 @@ def atualizar_restaurante(
     description="Atualiza campos específicos de um restaurante.",
 )
 def atualizar_parcial_restaurante(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     dados: RestauranteUpdate,
     db: Session = Depends(get_db),
 ) -> RestauranteResponse:
@@ -112,7 +132,7 @@ def atualizar_parcial_restaurante(
     description="Ativa ou desativa um restaurante no sistema.",
 )
 def alterar_status_restaurante(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     dados: RestauranteStatusUpdate,
     db: Session = Depends(get_db),
 ) -> RestauranteResponse:
@@ -127,7 +147,7 @@ def alterar_status_restaurante(
     description="Desativa o restaurante no banco de dados.",
 )
 def deletar_restaurante(
-    idRestaurante: int,
+    idRestaurante: uuid.UUID,
     db: Session = Depends(get_db),
 ):
     service = RestauranteService(db)
