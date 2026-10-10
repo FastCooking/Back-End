@@ -6,8 +6,8 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     String,
-    text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 

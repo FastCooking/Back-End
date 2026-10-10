@@ -1,7 +1,8 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from uuid import UUID
 
 from src.core.security import exigir_funcao
 from src.database.connection import get_db

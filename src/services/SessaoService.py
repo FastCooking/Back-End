@@ -1,6 +1,6 @@
+from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from fastapi import HTTPException
 
 from src.models.Mesa import Mesa
 from src.models.Sessao import Sessao

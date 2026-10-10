@@ -4,10 +4,10 @@ Revision ID: cf5c21fd3dca
 Revises: 002_pedido_sessao_kds
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision = "cf5c21fd3dca"
 down_revision = "002_pedido_sessao_kds"
