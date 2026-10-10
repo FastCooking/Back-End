@@ -4,7 +4,7 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, inspect, pool, text
 
 from alembic import context
 
@@ -85,20 +85,17 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        # --- HACK TEMPORÁRIO PARA CORRIGIR O BANCO DE DADOS REMOTO ---
-        try:
-            from sqlalchemy import text
-            connection.execute(
-                text(
-                    "UPDATE alembic_version "
-                    "SET version_num = '001_initial_uuid_schema' "
-                    "WHERE version_num IN ('001_initial_schema', '9f4a6b7c8d9e')"
+        has_version_table = inspect(connection).has_table("alembic_version")
+        connection.commit()
+        if has_version_table:
+            with connection.begin():
+                connection.execute(
+                    text(
+                        "UPDATE alembic_version "
+                        "SET version_num = '001_initial_uuid_schema' "
+                        "WHERE version_num IN ('001_initial_schema', '9f4a6b7c8d9e')"
+                    )
                 )
-            )
-            connection.commit()
-        except Exception:  # noqa: BLE001, S110
-            pass
-        # -------------------------------------------------------------
 
         context.configure(
             connection=connection, target_metadata=target_metadata
