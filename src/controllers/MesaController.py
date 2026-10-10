@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from uuid import UUID
 
 from src.core.security import exigir_funcao
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
 from src.services.QrCodeService import QrCodeService
+from src.services.SessaoService import SessaoService
 
 router = APIRouter(prefix="/mesas", tags=["Mesas"])
 
@@ -36,3 +38,15 @@ def gerar_qrcode_mesa(
             "Content-Disposition": f'inline; filename="mesa-{idMesa}-qrcode.png"'
         },
     )
+@router.post("/{idMesa}/abrir")
+def abrir_mesa(
+    idMesa: UUID,
+    db: Session = Depends(get_db),
+):
+    sessao = SessaoService.abrir_mesa(db, idMesa)
+
+    return {
+        "idMesa": str(sessao.idMesa),
+        "idSessao": str(sessao.idSessao),
+        "status": sessao.status,
+    }
