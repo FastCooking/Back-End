@@ -224,32 +224,54 @@ def test_status_change_is_broadcast_and_reconnect_receives_current_snapshot(
             websocket.send_json(_auth_message(token))
             websocket.receive_json()
 
-        started = time.perf_counter()
-        response = client.patch(
-            f"/pedidos/itens/{item_id}/status",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"status": "Em preparo"},
-        )
-        assert response.status_code == 200, response.text
-        status_events = [socket.receive_json() for socket in sockets]
-        elapsed = time.perf_counter() - started
-        print(f"Latência da mudança de status até os clientes: {elapsed * 1000:.2f} ms")
-        assert elapsed < 1.0
-        assert all(event["type"] == "item.status_changed" for event in status_events)
-        assert all(event["item"]["status"] == "Em preparo" for event in status_events)
-        assert len({event["eventId"] for event in status_events}) == 1
-        for socket in sockets:
-            assert socket.receive_json()["type"] == "queue.updated"
+        for next_status in ("Em preparo", "Pronto", "Entregue"):
+            started = time.perf_counter()
+            response = client.patch(
+                f"/pedidos/itens/{item_id}/status",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"status": next_status},
+            )
+            assert response.status_code == 200, response.text
+            status_events = [socket.receive_json() for socket in sockets]
+            elapsed = time.perf_counter() - started
+            assert elapsed < 1.0
+            assert all(
+                event["type"] == "item.status_changed" for event in status_events
+            )
+            assert all(
+                event["item"]["status"] == next_status for event in status_events
+            )
+            assert len({event["eventId"] for event in status_events}) == 1
+            for socket in sockets:
+                assert socket.receive_json()["type"] == "queue.updated"
 
     with client.websocket_connect("/pedidos/ws") as reconnected:
         reconnected.send_json(_auth_message(token))
         snapshot = reconnected.receive_json()
     assert snapshot["type"] == "queue.snapshot"
     assert any(
-        item["idItemPedido"] == item_id and item["status"] == "Em preparo"
+        item["idItemPedido"] == item_id and item["status"] == "Entregue"
         for item in snapshot["data"]["items"]
     )
     assert snapshot["data"]["priorityApplied"] is False
+
+
+def test_item_status_update_is_forbidden_for_non_cooks(realtime_environment):
+    client, session_factory, ids = realtime_environment
+    created = _create_order(client, ids, ids["waiter"])
+    item_id = created["itens"][0]["idItemPedido"]
+    token = _token(ids["waiter"], "Garcom")
+
+    response = client.patch(
+        f"/pedidos/itens/{item_id}/status",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"status": "Em preparo"},
+    )
+
+    assert response.status_code == 403
+    with session_factory() as db:
+        item = db.query(ItemPedido).filter_by(idItemPedido=UUID(item_id)).one()
+        assert item.status == "Pendente"
 
 
 def test_invalid_status_transition_is_rejected_without_queue_event(
