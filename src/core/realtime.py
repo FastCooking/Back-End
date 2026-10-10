@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import WebSocket
@@ -148,7 +148,7 @@ class RealtimeHub:
             "type": event_type,
             "eventId": str(uuid4()),
             "queueVersion": queue_version,
-            "occurredAt": datetime.now(timezone.utc).isoformat(),
+            "occurredAt": datetime.now(UTC).isoformat(),
             "restaurantId": restaurant_id,
             **data,
         }

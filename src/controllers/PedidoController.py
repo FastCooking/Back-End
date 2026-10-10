@@ -108,11 +108,11 @@ async def pedidos_websocket(
 
         while True:
             await websocket.receive_text()
-    except (asyncio.TimeoutError, ValueError):
+    except (TimeoutError, ValueError):
         await websocket.close(code=4401)
     except WebSocketDisconnect:
         pass
-    except (OSError, RuntimeError, SQLAlchemyError, TimeoutError):
+    except (OSError, RuntimeError, SQLAlchemyError):
         await websocket.close(code=1011)
     finally:
         await realtime_hub.disconnect(websocket)

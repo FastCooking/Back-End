@@ -25,7 +25,7 @@ class AuthService:
                 detail="E-mail ou senha inválidos.",
             )
 
-        agora = datetime.now()  # noqa: DTZ005
+        agora = datetime.now()
 
         # Verifica se está bloqueado
         if usuario.bloqueadoAte and usuario.bloqueadoAte > agora:

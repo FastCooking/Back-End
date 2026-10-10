@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func
@@ -102,7 +102,7 @@ class Pedido(Base):
         if dataFechamento is not None:
             self.dataFechamento = dataFechamento
         elif novo_status in ("Fechado", "Cancelado") and not self.dataFechamento:
-            self.dataFechamento = datetime.now(timezone.utc)
+            self.dataFechamento = datetime.now(UTC)
 
         db.commit()
         db.refresh(self)
