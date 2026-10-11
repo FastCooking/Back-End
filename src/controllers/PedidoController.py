@@ -62,6 +62,22 @@ def alterar_status_item(
     return result
 
 
+@router.patch("/itens/{idItemPedido}/liberar-sobremesa")
+def liberar_sobremesa(
+    idItemPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom")),
+) -> dict:
+    service = PedidoService(db)
+    result = service.liberar_sobremesa(idItemPedido, usuario)
+    background_tasks.add_task(
+        service.publish_events,
+        result.pop("events"),
+    )
+    return result
+
+
 @router.get("/kds/fila")
 def obter_fila(
     db: Session = Depends(get_db),
@@ -77,14 +93,20 @@ async def pedidos_websocket(
     db: Session = Depends(get_db),
 ) -> None:
     await websocket.accept()
+
     try:
-        auth_message = await asyncio.wait_for(websocket.receive_json(), timeout=5)
+        auth_message = await asyncio.wait_for(
+            websocket.receive_json(),
+            timeout=5,
+        )
+
         token = (
             auth_message.get("token")
             if isinstance(auth_message, dict)
             and auth_message.get("type") == "authenticate"
             else None
         )
+
         if not isinstance(token, str) or not token:
             await websocket.close(code=4401)
             return
@@ -100,6 +122,7 @@ async def pedidos_websocket(
             return
 
         service = PedidoService(db)
+
         await realtime_hub.connect_and_sync(
             websocket=websocket,
             restaurant_id=usuario.idRestaurante,
@@ -109,12 +132,28 @@ async def pedidos_websocket(
         )
 
         while True:
-            await websocket.receive_text()
+            try:
+                await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=15,
+                )
+            except TimeoutError:
+                conectado = await realtime_hub.refresh_queue(
+                    websocket=websocket,
+                    snapshot_factory=lambda: service.queue_snapshot(usuario),
+                )
+
+                if not conectado:
+                    break
+
     except (TimeoutError, ValueError):
         await websocket.close(code=4401)
+
     except WebSocketDisconnect:
         pass
+
     except (OSError, RuntimeError, SQLAlchemyError):
         await websocket.close(code=1011)
+
     finally:
         await realtime_hub.disconnect(websocket)

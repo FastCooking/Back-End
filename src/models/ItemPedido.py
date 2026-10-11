@@ -1,7 +1,8 @@
 import uuid
+from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import Column, ForeignKey, Integer, Numeric, String, Text, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -33,6 +34,16 @@ class ItemPedido(Base):
     observacao: str | None = Column(Text, nullable=True)
     categoria: str | None = Column(String(50), nullable=True)
     prioridade: int = Column(Integer, default=1)
+    dataCriacao = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+    liberadoParaPreparo: bool = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
 
     # Relacionamentos
     pedido = relationship("Pedido", back_populates="itens")
@@ -53,6 +64,7 @@ class ItemPedido(Base):
         status: str = "Pendente",
         categoria: str | None = None,
         prioridade: int = 1,
+        liberadoParaPreparo: bool = True,
         commit: bool = True,
     ) -> "ItemPedido":
         """Cria e persiste um novo item de pedido."""
@@ -65,6 +77,7 @@ class ItemPedido(Base):
             status=status,
             categoria=categoria,
             prioridade=prioridade,
+            liberadoParaPreparo=liberadoParaPreparo,
         )
         db.add(item)
         if commit:
