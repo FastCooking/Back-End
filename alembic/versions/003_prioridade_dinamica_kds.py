@@ -4,9 +4,9 @@ Revision ID: 003_prioridade_dinamica_kds
 Revises: cf5c21fd3dca
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "003_prioridade_dinamica_kds"
 down_revision = "cf5c21fd3dca"

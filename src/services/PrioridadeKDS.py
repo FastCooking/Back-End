@@ -1,7 +1,6 @@
 import unicodedata
 from datetime import UTC, datetime
 
-
 # Peso e tempo limite em minutos por categoria.
 REGRAS_CATEGORIA = {
     "bebida": {"peso": 2.0, "limite": 3},
