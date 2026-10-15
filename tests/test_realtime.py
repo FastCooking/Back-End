@@ -249,11 +249,11 @@ def test_status_change_is_broadcast_and_reconnect_receives_current_snapshot(
         reconnected.send_json(_auth_message(token))
         snapshot = reconnected.receive_json()
     assert snapshot["type"] == "queue.snapshot"
-    assert any(
-        item["idItemPedido"] == item_id and item["status"] == "Entregue"
+    assert all(
+        item["idItemPedido"] != item_id
         for item in snapshot["data"]["items"]
     )
-    assert snapshot["data"]["priorityApplied"] is False
+    assert snapshot["data"]["priorityApplied"] is True
 
 
 def test_item_status_update_is_forbidden_for_non_cooks(realtime_environment):
@@ -417,3 +417,97 @@ async def test_hub_isolates_audience_and_removes_failed_connections():
 
     await hub.disconnect(cook)
     assert cook not in {subscription.websocket for subscription in hub._subscriptions}
+
+def test_sobremesa_fica_bloqueada_ate_liberacao_do_garcom(
+    realtime_environment,
+):
+    from src.services.PedidoService import PedidoService
+
+    client, session_factory, ids = realtime_environment
+
+    # Transformar o item de cardápio existente em sobremesa.
+    with session_factory() as db:
+        cardapio = db.query(Cardapio).filter_by(
+            idCardapio=ids["menu"]
+        ).one()
+        cardapio.categoria = "Sobremesas"
+        db.commit()
+
+    # Criar o pedido como garçom.
+    created = _create_order(client, ids, ids["waiter"])
+    item_id = created["itens"][0]["idItemPedido"]
+
+    # Confirmar que o item bloqueado não aparece na fila do garçom.
+    with session_factory() as db:
+        garcom = db.query(Usuario).filter_by(
+            idUsuario=ids["waiter"]
+        ).one()
+        snapshot = PedidoService(db).queue_snapshot(garcom)
+
+        assert all(
+            item["idItemPedido"] != item_id
+            for item in snapshot["items"]
+        )
+
+    # Liberar a sobremesa pela rota de garçom.
+    response = client.patch(
+        f"/pedidos/itens/{item_id}/liberar-sobremesa",
+        headers={
+            "Authorization": f"Bearer {_token(ids['waiter'], 'Garcom')}"
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    # Após a liberação, o item deve entrar na fila como Pendente.
+    with session_factory() as db:
+        garcom = db.query(Usuario).filter_by(
+            idUsuario=ids["waiter"]
+        ).one()
+        snapshot = PedidoService(db).queue_snapshot(garcom)
+
+        item = next(
+            (
+                item
+                for item in snapshot["items"]
+                if item["idItemPedido"] == item_id
+            ),
+            None,
+        )
+
+        assert item is not None
+        assert item["status"] == "Pendente"
+        assert item["liberadoParaPreparo"] is True
+
+
+def test_cozinheiro_nao_pode_liberar_sobremesa(
+    realtime_environment,
+):
+    client, session_factory, ids = realtime_environment
+
+    with session_factory() as db:
+        cardapio = db.query(Cardapio).filter_by(
+            idCardapio=ids["menu"]
+        ).one()
+        cardapio.categoria = "Sobremesas"
+        db.commit()
+
+    created = _create_order(client, ids, ids["waiter"])
+    item_id = created["itens"][0]["idItemPedido"]
+
+    response = client.patch(
+        f"/pedidos/itens/{item_id}/liberar-sobremesa",
+        headers={
+            "Authorization": f"Bearer {_token(ids['cook'], 'Cozinheiro')}"
+        },
+    )
+
+    assert response.status_code == 403
+
+    with session_factory() as db:
+        item = db.query(ItemPedido).filter_by(
+            idItemPedido=UUID(item_id)
+        ).one()
+
+        assert item.liberadoParaPreparo is False
+        assert item.status == "Pendente"

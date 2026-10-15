@@ -11,6 +11,7 @@ from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import PedidoCreate, PedidoItemCreate
+from src.services.PrioridadeKDS import calcular_pontuacao, eh_sobremesa
 
 STATUS_ITEM = ("Pendente", "Em preparo", "Pronto", "Entregue")
 
@@ -34,7 +35,10 @@ class PedidoService:
                 detail="Mesa não encontrada neste restaurante.",
             )
 
-        cardapios = self._validate_menu_items(dados.itens, usuario.idRestaurante)
+        cardapios = self._validate_menu_items(
+            dados.itens, usuario.idRestaurante
+        )
+
         try:
             pedido = Pedido.create(
                 db=self.db,
@@ -44,6 +48,7 @@ class PedidoService:
                 sessao_id=dados.sessao_id,
                 commit=False,
             )
+
             itens = [
                 ItemPedido.create(
                     db=self.db,
@@ -53,14 +58,22 @@ class PedidoService:
                     precoUnitario=float(cardapio.preco),
                     observacao=item.observacao,
                     categoria=cardapio.categoria,
+                    liberadoParaPreparo=not eh_sobremesa(
+                        cardapio.categoria
+                    ),
                     commit=False,
                 )
-                for item, cardapio in zip(dados.itens, cardapios, strict=True)
+                for item, cardapio in zip(
+                    dados.itens, cardapios, strict=True
+                )
             ]
+
             self.db.commit()
             self.db.refresh(pedido)
+
             for item in itens:
                 self.db.refresh(item)
+
         except Exception:
             self.db.rollback()
             raise
@@ -69,15 +82,22 @@ class PedidoService:
             "pedido": self._pedido_data(pedido),
             "itens": [self._item_data(item) for item in itens],
             "events": [
-                self._event_data("item.created", pedido, item) for item in itens
+                self._event_data("item.created", pedido, item)
+                for item in itens
             ],
         }
 
     def add_items(
-        self, idPedido: uuid.UUID, itens: list[PedidoItemCreate], usuario: Usuario
+        self,
+        idPedido: uuid.UUID,
+        itens: list[PedidoItemCreate],
+        usuario: Usuario,
     ) -> dict:
         pedido = self._get_assigned_order(idPedido, usuario)
-        cardapios = self._validate_menu_items(itens, usuario.idRestaurante)
+        cardapios = self._validate_menu_items(
+            itens, usuario.idRestaurante
+        )
+
         try:
             novos_itens = [
                 ItemPedido.create(
@@ -88,13 +108,21 @@ class PedidoService:
                     precoUnitario=float(cardapio.preco),
                     observacao=item.observacao,
                     categoria=cardapio.categoria,
+                    liberadoParaPreparo=not eh_sobremesa(
+                        cardapio.categoria
+                    ),
                     commit=False,
                 )
-                for item, cardapio in zip(itens, cardapios, strict=True)
+                for item, cardapio in zip(
+                    itens, cardapios, strict=True
+                )
             ]
+
             self.db.commit()
+
             for item in novos_itens:
                 self.db.refresh(item)
+
         except Exception:
             self.db.rollback()
             raise
@@ -102,12 +130,16 @@ class PedidoService:
         return {
             "itens": [self._item_data(item) for item in novos_itens],
             "events": [
-                self._event_data("item.created", pedido, item) for item in novos_itens
+                self._event_data("item.created", pedido, item)
+                for item in novos_itens
             ],
         }
 
     def update_item_status(
-        self, idItemPedido: uuid.UUID, novo_status: str, usuario: Usuario
+        self,
+        idItemPedido: uuid.UUID,
+        novo_status: str,
+        usuario: Usuario,
     ) -> dict:
         item = (
             self.db.query(ItemPedido)
@@ -115,6 +147,7 @@ class PedidoService:
             .with_for_update()
             .first()
         )
+
         if item is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -122,18 +155,30 @@ class PedidoService:
             )
 
         pedido = Pedido.get_by_id(self.db, item.idPedido)
+
         if pedido is None or pedido.idRestaurante != usuario.idRestaurante:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Item do pedido não encontrado.",
             )
 
+        if not item.liberadoParaPreparo:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Este item ainda não foi liberado para preparo.",
+            )
+
         current_index = (
-            STATUS_ITEM.index(item.status) if item.status in STATUS_ITEM else -1
+            STATUS_ITEM.index(item.status)
+            if item.status in STATUS_ITEM
+            else -1
         )
+
         if current_index < 0 or current_index == len(STATUS_ITEM) - 1:
             self._invalid_transition(item.status, novo_status)
+
         expected_status = STATUS_ITEM[current_index + 1]
+
         if novo_status != expected_status:
             self._invalid_transition(item.status, novo_status)
 
@@ -142,13 +187,85 @@ class PedidoService:
             self.db.commit()
             self.db.refresh(item)
             self.db.refresh(pedido)
+
         except Exception:
             self.db.rollback()
             raise
 
         return {
             "item": self._item_data(item),
-            "event": self._event_data("item.status_changed", pedido, item),
+            "event": self._event_data(
+                "item.status_changed", pedido, item
+            ),
+        }
+
+    def liberar_sobremesa(
+        self,
+        idItemPedido: uuid.UUID,
+        usuario: Usuario,
+    ) -> dict:
+        item = (
+            self.db.query(ItemPedido)
+            .filter(ItemPedido.idItemPedido == idItemPedido)
+            .with_for_update()
+            .first()
+        )
+
+        if item is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        pedido = Pedido.get_by_id(self.db, item.idPedido)
+
+        if pedido is None or pedido.idRestaurante != usuario.idRestaurante:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        if not eh_sobremesa(item.categoria):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Somente sobremesas podem ser liberadas por esta rota.",
+            )
+
+        if pedido.status in ("Fechado", "Cancelado"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível liberar sobremesa de um pedido encerrado.",
+            )
+
+        if item.status == "Cancelado":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível liberar um item cancelado.",
+            )
+
+        if item.liberadoParaPreparo:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Esta sobremesa já foi liberada.",
+            )
+
+        try:
+            item.liberadoParaPreparo = True
+            self.db.commit()
+            self.db.refresh(item)
+            self.db.refresh(pedido)
+
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return {
+            "item": self._item_data(item),
+            "events": [
+                self._event_data(
+                    "item.dessert_released", pedido, item
+                )
+            ],
         }
 
     def queue_snapshot(self, usuario: Usuario) -> dict:
@@ -159,15 +276,30 @@ class PedidoService:
                 Pedido.idRestaurante == usuario.idRestaurante,
                 Pedido.status.notin_(["Fechado", "Cancelado"]),
                 ItemPedido.status != "Cancelado",
+                ItemPedido.liberadoParaPreparo.is_(True),
+                ItemPedido.status.in_(["Pendente", "Em preparo"]),
             )
         )
+
         if usuario.funcao == "Garcom":
-            query = query.filter(Pedido.idGarcom == usuario.idUsuario)
+            query = query.filter(
+                Pedido.idGarcom == usuario.idUsuario
+            )
 
         rows = query.all()
+        items = [self._item_data(item) for item, _ in rows]
+
+        items.sort(
+            key=lambda item: (
+                -item["pontuacao"],
+                item["dataCriacao"],
+                item["idItemPedido"],
+            )
+        )
+
         return {
-            "items": [self._item_data(item) for item, _ in rows],
-            "priorityApplied": False,
+            "items": items,
+            "priorityApplied": True,
             "queueVersion": realtime_hub.queue_version,
         }
 
@@ -180,7 +312,11 @@ class PedidoService:
                 assigned_waiter_id=event["assignedWaiterId"],
             )
 
-    def _get_assigned_order(self, idPedido: uuid.UUID, usuario: Usuario) -> Pedido:
+    def _get_assigned_order(
+        self,
+        idPedido: uuid.UUID,
+        usuario: Usuario,
+    ) -> Pedido:
         pedido = (
             self.db.query(Pedido)
             .filter(
@@ -190,17 +326,22 @@ class PedidoService:
             )
             .first()
         )
+
         if pedido is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Pedido não encontrado.",
             )
+
         return pedido
 
     def _validate_menu_items(
-        self, itens: list[PedidoItemCreate], idRestaurante: uuid.UUID
+        self,
+        itens: list[PedidoItemCreate],
+        idRestaurante: uuid.UUID,
     ) -> list[Cardapio]:
         cardapios: list[Cardapio] = []
+
         for item in itens:
             cardapio = (
                 self.db.query(Cardapio)
@@ -211,16 +352,22 @@ class PedidoService:
                 )
                 .first()
             )
+
             if cardapio is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Item do cardápio não encontrado neste restaurante.",
                 )
+
             cardapios.append(cardapio)
+
         return cardapios
 
     @staticmethod
-    def _invalid_transition(current_status: str, requested_status: str) -> None:
+    def _invalid_transition(
+        current_status: str,
+        requested_status: str,
+    ) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -242,6 +389,13 @@ class PedidoService:
 
     @staticmethod
     def _item_data(item: ItemPedido) -> dict:
+        data_criacao = item.dataCriacao
+
+        tempo_espera, pontuacao = calcular_pontuacao(
+            item.categoria,
+            data_criacao,
+        )
+
         return {
             "idItemPedido": str(item.idItemPedido),
             "idPedido": str(item.idPedido),
@@ -252,10 +406,19 @@ class PedidoService:
             "observacao": item.observacao,
             "categoria": item.categoria,
             "prioridade": item.prioridade,
+            "dataCriacao": data_criacao.isoformat(),
+            "liberadoParaPreparo": item.liberadoParaPreparo,
+            "tempoEsperaMinutos": tempo_espera,
+            "pontuacao": pontuacao,
         }
 
     @classmethod
-    def _event_data(cls, event_type: str, pedido: Pedido, item: ItemPedido) -> dict:
+    def _event_data(
+        cls,
+        event_type: str,
+        pedido: Pedido,
+        item: ItemPedido,
+    ) -> dict:
         return {
             "type": event_type,
             "restaurantId": pedido.idRestaurante,

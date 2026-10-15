@@ -39,13 +39,18 @@ class RealtimeHub:
         snapshot_factory,
     ) -> None:
         """Register and send a snapshot atomically relative to broadcasts."""
-        subscription = Subscription(websocket, restaurant_id, user_id, role)
+        subscription = Subscription(
+            websocket, restaurant_id, user_id, role
+        )
+
         async with self._lock:
             snapshot = snapshot_factory()
             self._subscriptions.add(subscription)
             subscription.sequence += 1
+
             if isinstance(snapshot, dict):
                 snapshot["queueVersion"] = self._queue_version
+
             try:
                 await asyncio.wait_for(
                     websocket.send_json(
@@ -62,6 +67,57 @@ class RealtimeHub:
             except Exception:
                 self._subscriptions.discard(subscription)
                 raise
+
+    async def refresh_queue(
+        self,
+        websocket: WebSocket,
+        snapshot_factory,
+    ) -> bool:
+        """Send a fresh queue snapshot to one connected subscriber."""
+        async with self._lock:
+            subscription = next(
+                (
+                    item
+                    for item in self._subscriptions
+                    if item.websocket is websocket
+                ),
+                None,
+            )
+
+            if subscription is None:
+                return False
+
+            try:
+                snapshot = snapshot_factory()
+
+                if isinstance(snapshot, dict):
+                    snapshot["queueVersion"] = self._queue_version
+
+                subscription.sequence += 1
+
+                await asyncio.wait_for(
+                    websocket.send_json(
+                        self._event(
+                            "queue.snapshot",
+                            subscription.restaurant_id,
+                            self._queue_version,
+                            sequence=subscription.sequence,
+                            data=snapshot,
+                        )
+                    ),
+                    timeout=SEND_TIMEOUT_SECONDS,
+                )
+
+                return True
+
+            except (
+                OSError,
+                RuntimeError,
+                TimeoutError,
+                WebSocketDisconnect,
+            ):
+                self._subscriptions.discard(subscription)
+                return False
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
@@ -82,28 +138,29 @@ class RealtimeHub:
         async with self._lock:
             self._queue_version += 1
             queue_version = self._queue_version
+
             events = [
                 self._event(
                     event_type,
                     restaurant_id,
                     queue_version,
                     item=item_data,
-                )
-            ]
-            events.append(
+                ),
                 self._event(
                     "queue.updated",
                     restaurant_id,
                     queue_version,
                     reason=event_type,
                     refreshRequired=True,
-                )
-            )
+                ),
+            ]
 
             deliveries = []
+
             for subscription in tuple(self._subscriptions):
                 if subscription.restaurant_id != restaurant_id:
                     continue
+
                 if subscription.role == "Cozinheiro":
                     recipient = True
                 else:
@@ -111,30 +168,47 @@ class RealtimeHub:
                         subscription.role == "Garcom"
                         and assigned_waiter_id == subscription.user_id
                     )
-                if not recipient:
-                    continue
-                deliveries.append(self._send_events(subscription, events))
+
+                if recipient:
+                    deliveries.append(
+                        self._send_events(subscription, events)
+                    )
 
             failed = await asyncio.gather(*deliveries)
+
             self._subscriptions.difference_update(
-                subscription for subscription in failed if subscription is not None
+                subscription
+                for subscription in failed
+                if subscription is not None
             )
 
     @staticmethod
     async def _send_events(
-        subscription: Subscription, events: list[dict]
+        subscription: Subscription,
+        events: list[dict],
     ) -> Subscription | None:
         try:
             for event in events:
                 subscription.sequence += 1
+
                 await asyncio.wait_for(
                     subscription.websocket.send_json(
-                        {**event, "sequence": subscription.sequence}
+                        {
+                            **event,
+                            "sequence": subscription.sequence,
+                        }
                     ),
                     timeout=SEND_TIMEOUT_SECONDS,
                 )
-        except (OSError, RuntimeError, TimeoutError, WebSocketDisconnect):
+
+        except (
+            OSError,
+            RuntimeError,
+            TimeoutError,
+            WebSocketDisconnect,
+        ):
             return subscription
+
         return None
 
     def _event(
