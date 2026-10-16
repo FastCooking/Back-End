@@ -22,16 +22,30 @@ from src.controllers.AuthController import router as auth_router
 from src.controllers.CardapioController import router as cardapio_router
 from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
+from contextlib import asynccontextmanager
 from src.controllers.MesaController import router as mesa_router
 from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
+from src.core.bootstrap import garantir_usuario_admin
 from src.database.connection import get_db, test_connection
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Executa o bootstrap de deploy de forma segura e idempotente
+    try:
+        garantir_usuario_admin()
+    except Exception as exc:
+        print(f"[BOOTSTRAP] Aviso/Erro ao verificar usuário padrão: {exc}")
+    yield
+
 
 app = FastAPI(
     title="FastCooking API",
     description="API do sistema FastCooking para gerenciamento de restaurantes, pedidos, cardápio e estoque.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
