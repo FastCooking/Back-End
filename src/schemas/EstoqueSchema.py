@@ -20,6 +20,15 @@ class EstoqueCreateDTO(BaseModel):
         return nome
 
 
+class EstoqueUpdateDTO(BaseModel):
+    nome: str | None = Field(default=None, min_length=1, max_length=150)
+    quantidadeEmEstoque: float | None = Field(default=None, ge=0)
+    quantidadeMinima: float | None = Field(default=None, ge=0)
+    idRestaurante: uuid.UUID | None = None
+    unidadeMedida: str | None = Field(default=None, min_length=1, max_length=20)
+    pathImage: str | None = None
+
+
 class EstoqueResponseDTO(BaseModel):
     idEstoque: uuid.UUID
     nome: str

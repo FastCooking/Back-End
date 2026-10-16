@@ -442,3 +442,57 @@ def test_buscar_ficha_tecnica_completa_sem_ficha():
     data = response.json()
     assert data["cardapio"]["idCardapio"] == cardapio_id
     assert data["insumos"] == []
+
+
+def test_update_insumo_via_api():
+    id_restaurante = _obter_ou_criar_restaurante()
+    item = client.post(
+        "/insumos",
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Orégano",
+            "quantidadeEmEstoque": 1.0,
+            "quantidadeMinima": 0.2,
+            "unidadeMedida": "KG",
+        },
+    )
+    assert item.status_code == 201
+    id_estoque = item.json()["idEstoque"]
+
+    response = client.put(
+        f"/insumos/{id_estoque}",
+        json={
+            "nome": "Orégano Seco",
+            "quantidadeEmEstoque": 2.5,
+            "quantidadeMinima": 0.5,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["nome"] == "Orégano Seco"
+    assert data["quantidadeEmEstoque"] == 2.5
+    assert data["quantidadeMinima"] == 0.5
+
+
+def test_delete_insumo_via_api():
+    id_restaurante = _obter_ou_criar_restaurante()
+    item = client.post(
+        "/insumos",
+        json={
+            "idRestaurante": str(id_restaurante),
+            "nome": "Pimenta do Reino",
+            "quantidadeEmEstoque": 0.5,
+            "quantidadeMinima": 0.1,
+            "unidadeMedida": "KG",
+        },
+    )
+    assert item.status_code == 201
+    id_estoque = item.json()["idEstoque"]
+
+    response = client.delete(f"/insumos/{id_estoque}")
+    assert response.status_code == 200
+    assert response.json()["message"] == "Insumo excluído com sucesso."
+
+    # Verifica se realmente sumiu
+    get_res = client.get(f"/insumos/{id_estoque}")
+    assert get_res.status_code == 404

@@ -94,6 +94,7 @@ class Estoque(Base):
         quantidadeEstoque: float | None = None,
         unidadeMedida: str | None = None,
         quantidadeMinima: float | None = None,
+        pathImage: str | None = None,
     ) -> "Estoque":
         """Atualiza os dados cadastrais do item."""
         if nome is not None:
@@ -104,6 +105,8 @@ class Estoque(Base):
             self.unidadeMedida = unidadeMedida
         if quantidadeMinima is not None:
             self.quantidadeMinima = quantidadeMinima
+        if pathImage is not None:
+            self.pathImage = pathImage
 
         db.commit()
         db.refresh(self)

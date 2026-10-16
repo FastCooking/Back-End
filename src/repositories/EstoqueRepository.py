@@ -39,3 +39,30 @@ class EstoqueRepository:
         if idRestaurante is not None:
             query = query.filter(Estoque.idRestaurante == idRestaurante)
         return query.order_by(Estoque.nome.asc()).all()
+
+    def update(
+        self,
+        idEstoque: uuid.UUID | str,
+        nome: str | None = None,
+        quantidadeEmEstoque: float | None = None,
+        quantidadeMinima: float | None = None,
+        unidadeMedida: str | None = None,
+        pathImage: str | None = None,
+    ) -> Estoque | None:
+        insumo = self.get_by_id(idEstoque)
+        if not insumo:
+            return None
+        return insumo.update(
+            db=self.db,
+            nome=nome,
+            quantidadeEstoque=quantidadeEmEstoque,
+            unidadeMedida=unidadeMedida,
+            quantidadeMinima=quantidadeMinima,
+            pathImage=pathImage,
+        )
+
+    def delete(self, idEstoque: uuid.UUID | str) -> bool:
+        insumo = self.get_by_id(idEstoque)
+        if not insumo:
+            return False
+        return insumo.delete(self.db)
