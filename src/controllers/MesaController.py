@@ -167,3 +167,16 @@ def abrir_mesa(
         "numero": mesa.numero if mesa else None,
         "idPedidoAtivo": str(pedido_ativo.idPedido) if pedido_ativo else None,
     }
+
+
+@router.post("/sessoes/expirar-inativas")
+def expirar_sessoes_inativas(
+    limite_minutos: int = Query(default=10, ge=1, le=1440),
+    db: Session = Depends(get_db),
+):
+    expiradas = SessaoService.expirar_sessoes_inativas(db, limite_minutos)
+    return {
+        "message": f"{len(expiradas)} sessões inativas expiradas com sucesso.",
+        "totalExpiradas": len(expiradas),
+        "sessoes": [str(s.idSessao) for s in expiradas],
+    }

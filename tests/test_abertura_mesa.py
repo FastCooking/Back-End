@@ -68,3 +68,41 @@ def test_abrir_mesa_inexistente_retorna_404(db_session):
         assert False, "Deveria retornar erro 404"
     except HTTPException as erro:
         assert erro.status_code == 404
+
+
+def test_rf02_expiracao_automatica_sessao_inativa(db_session):
+    from datetime import datetime, timedelta
+
+    mesa = criar_mesa(db_session)
+    sessao = SessaoService.abrir_mesa(db_session, mesa.idMesa)
+
+    # Simula 11 minutos de inatividade desde a abertura
+    sessao.dataAbertura = datetime.now() - timedelta(minutes=11)
+    db_session.commit()
+
+    expiradas = SessaoService.expirar_sessoes_inativas(db_session, limite_minutos=10)
+    assert len(expiradas) == 1
+    assert expiradas[0].idSessao == sessao.idSessao
+    assert expiradas[0].status == "Expirada"
+
+    db_session.refresh(mesa)
+    assert mesa.status == "Disponivel"
+
+
+def test_rf02_abrir_mesa_expira_sessao_antiga_e_abre_nova(db_session):
+    from datetime import datetime, timedelta
+
+    mesa = criar_mesa(db_session)
+    sessao_antiga = SessaoService.abrir_mesa(db_session, mesa.idMesa)
+
+    # Simula 15 minutos atrás
+    sessao_antiga.dataAbertura = datetime.now() - timedelta(minutes=15)
+    db_session.commit()
+
+    # Reabrir mesa deve criar uma nova sessão ativa porque a anterior expirou
+    nova_sessao = SessaoService.abrir_mesa(db_session, mesa.idMesa)
+    assert nova_sessao.idSessao != sessao_antiga.idSessao
+    assert nova_sessao.status == "Ativa"
+
+    db_session.refresh(sessao_antiga)
+    assert sessao_antiga.status == "Expirada"
