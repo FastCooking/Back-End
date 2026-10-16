@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ from src.schemas.CardapioSchema import (
 )
 from src.services.CardapioService import CardapioService
 
-SECRET_KEY = os.getenv("JWT_SECRET")
+SECRET_KEY = os.getenv("JWT_SECRET") or "fastcooking_default_secret_key_change_in_prod"
 ALGORITHM = "HS256"
 security_optional = HTTPBearer(auto_error=False)
 
@@ -48,12 +48,39 @@ router = APIRouter(
     status_code=status.HTTP_201_CREATED,
     summary="Criar item do cardápio",
 )
-def criar_item(
-    dados: CardapioCreate,
+async def criar_item(
+    request: Request,
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(get_optional_user),
 ):
     service = CardapioService(db)
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file_obj = form.get("file")
+        file = file_obj if hasattr(file_obj, "filename") and getattr(file_obj, "filename", None) else None
+
+        path_image = form.get("pathImage")
+        if file:
+            path_image = await service.salvar_e_comprimir_imagem(file)
+        elif path_image == "":
+            path_image = None
+
+        id_restaurante_val = form.get("idRestaurante")
+        id_restaurante = uuid.UUID(str(id_restaurante_val)) if id_restaurante_val else None
+
+        dados = CardapioCreate(
+            nome=str(form.get("nome")),
+            preco=float(form.get("preco")),
+            categoria=str(form.get("categoria")),
+            descricao=form.get("descricao") or None,
+            pathImage=path_image or None,
+            idRestaurante=id_restaurante,
+        )
+    else:
+        body = await request.json()
+        dados = CardapioCreate(**body)
 
     return service.criar(
         dados=dados,
@@ -99,17 +126,66 @@ def buscar_item(
     status_code=status.HTTP_200_OK,
     summary="Editar item do cardápio",
 )
-def editar_item(
+async def editar_item(
     idCardapio: uuid.UUID,
-    dados: CardapioUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     usuario: Usuario | None = Depends(get_optional_user),
 ):
     service = CardapioService(db)
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file_obj = form.get("file")
+        file = file_obj if hasattr(file_obj, "filename") and getattr(file_obj, "filename", None) else None
+
+        path_image = form.get("pathImage")
+        if file:
+            path_image = await service.salvar_e_comprimir_imagem(file)
+        elif path_image == "":
+            path_image = None
+
+        dados_dict = {}
+        if "nome" in form and form["nome"]:
+            dados_dict["nome"] = form["nome"]
+        if "preco" in form and form["preco"]:
+            dados_dict["preco"] = float(form["preco"])
+        if "categoria" in form and form["categoria"]:
+            dados_dict["categoria"] = form["categoria"]
+        if "descricao" in form:
+            dados_dict["descricao"] = form["descricao"] or None
+        if path_image is not None or "pathImage" in form or file:
+            dados_dict["pathImage"] = path_image
+
+        dados = CardapioUpdate(**dados_dict)
+    else:
+        body = await request.json()
+        dados = CardapioUpdate(**body)
 
     return service.editar(
         idCardapio=idCardapio,
         dados=dados,
+        usuario=usuario,
+    )
+
+
+@router.post(
+    "/{idCardapio}",
+    response_model=CardapioResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Editar item do cardápio (alias POST multipart)",
+)
+async def editar_item_post(
+    idCardapio: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(get_optional_user),
+):
+    return await editar_item(
+        idCardapio=idCardapio,
+        request=request,
+        db=db,
         usuario=usuario,
     )
 
