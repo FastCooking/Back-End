@@ -1,4 +1,5 @@
 import os
+import uuid
 from io import BytesIO
 
 import qrcode
@@ -12,7 +13,7 @@ class QrCodeService:
     def __init__(self, db: Session):
         self.db = db
 
-    def gerar_qrcode(self, idMesa: int) -> BytesIO:
+    def gerar_qrcode(self, idMesa: uuid.UUID | str) -> BytesIO:
         mesa = Mesa.get_by_id(self.db, idMesa)
 
         if mesa is None:
