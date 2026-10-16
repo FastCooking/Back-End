@@ -156,6 +156,19 @@ def liberar_sobremesa(
     return result
 
 
+@router.patch("/itens/{idItemPedido}/cancelar")
+def cancelar_item(
+    idItemPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    result = service.cancelar_item(idItemPedido, usuario)
+    background_tasks.add_task(service.publish_events, [result.pop("event")])
+    return result
+
+
 @router.get("/kds/fila")
 def obter_fila(
     db: Session = Depends(get_db),

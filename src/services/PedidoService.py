@@ -364,6 +364,66 @@ class PedidoService:
             ],
         }
 
+    def cancelar_item(
+        self,
+        idItemPedido: uuid.UUID,
+        usuario: Usuario,
+    ) -> dict:
+        item = (
+            self.db.query(ItemPedido)
+            .filter(ItemPedido.idItemPedido == idItemPedido)
+            .with_for_update()
+            .first()
+        )
+
+        if item is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        pedido = Pedido.get_by_id(self.db, item.idPedido)
+
+        if pedido is None or pedido.idRestaurante != usuario.idRestaurante:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        if pedido.status in ("Fechado", "Cancelado"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível cancelar item de um pedido encerrado ou cancelado.",
+            )
+
+        if item.status == "Cancelado":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="O item já está cancelado.",
+            )
+
+        if item.status != "Pendente":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Não é possível cancelar o item. O preparo já foi iniciado ou finalizado (status atual: '{item.status}').",
+            )
+
+        try:
+            item.update_stats(self.db, "Cancelado", commit=False)
+            self.db.commit()
+            self.db.refresh(item)
+            self.db.refresh(pedido)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return {
+            "item": self._item_data(item),
+            "event": self._event_data(
+                "item.status_changed", pedido, item
+            ),
+        }
+
     def queue_snapshot(self, usuario: Usuario) -> dict:
         query = (
             self.db.query(ItemPedido, Pedido)
