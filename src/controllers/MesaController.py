@@ -1,19 +1,25 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from src.core.realtime import realtime_hub
 from src.core.security import exigir_funcao
 from src.database.connection import get_db
 from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
 from src.models.Usuario import Usuario
 from src.schemas.MesaSchema import MesaCreate, MesaResponse, MesaUpdate
+from src.services.PedidoService import PedidoService
 from src.services.QrCodeService import QrCodeService
 from src.services.SessaoService import SessaoService
 
 router = APIRouter(prefix="/mesas", tags=["Mesas"])
+
+# Armazenamento em memória de chamados ativos por mesa: { str(idMesa): dict }
+chamados_ativos: dict[str, dict] = {}
 
 
 @router.get(
@@ -180,3 +186,109 @@ def expirar_sessoes_inativas(
         "totalExpiradas": len(expiradas),
         "sessoes": [str(s.idSessao) for s in expiradas],
     }
+
+
+@router.post("/{idMesa}/chamar-garcom")
+def chamar_garcom(
+    idMesa: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    mesa = Mesa.get_by_id(db, idMesa)
+    if not mesa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mesa não encontrada.",
+        )
+
+    info_chamado = {
+        "idMesa": str(mesa.idMesa),
+        "idRestaurante": str(mesa.idRestaurante),
+        "numero": mesa.numero,
+        "chamadoEm": datetime.now(UTC).isoformat(),
+    }
+    chamados_ativos[str(mesa.idMesa)] = info_chamado
+
+    background_tasks.add_task(
+        realtime_hub.publish_waiter_call,
+        mesa.idRestaurante,
+        info_chamado,
+        atendido=False,
+    )
+
+    return {
+        "message": f"Garçom chamado com sucesso para a Mesa #{mesa.numero}.",
+        "chamado": info_chamado,
+    }
+
+
+@router.post("/{idMesa}/atender-chamado")
+def atender_chamado(
+    idMesa: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+):
+    mesa = Mesa.get_by_id(db, idMesa)
+    if not mesa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mesa não encontrada.",
+        )
+
+    chamados_ativos.pop(str(idMesa), None)
+
+    info_chamado = {
+        "idMesa": str(mesa.idMesa),
+        "idRestaurante": str(mesa.idRestaurante),
+        "numero": mesa.numero,
+        "atendidoPor": str(usuario.idUsuario),
+        "atendidoEm": datetime.now(UTC).isoformat(),
+    }
+
+    background_tasks.add_task(
+        realtime_hub.publish_waiter_call,
+        mesa.idRestaurante,
+        info_chamado,
+        atendido=True,
+    )
+
+    return {
+        "message": f"Chamado da Mesa #{mesa.numero} atendido.",
+        "chamado": info_chamado,
+    }
+
+
+@router.get("/chamados/ativos")
+def listar_chamados_ativos(
+    idRestaurante: UUID = Query(..., description="ID do restaurante"),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+):
+    str_restaurante = str(idRestaurante)
+    chamados = [
+        c for c in chamados_ativos.values()
+        if c.get("idRestaurante") == str_restaurante
+    ]
+    return chamados
+
+
+@router.get("/{idMesa}/pedido-ativo")
+def obter_pedido_ativo_mesa(
+    idMesa: UUID,
+    db: Session = Depends(get_db),
+):
+    mesa = Mesa.get_by_id(db, idMesa)
+    if not mesa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mesa não encontrada.",
+        )
+
+    pedido = Pedido.get_active_for_table(db, idMesa)
+    if not pedido:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhum pedido ativo encontrado para esta mesa.",
+        )
+
+    return PedidoService(db).get_order(pedido.idPedido)

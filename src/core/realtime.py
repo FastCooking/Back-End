@@ -257,6 +257,35 @@ class RealtimeHub:
                     sub for sub in failed_tracking if sub is not None
                 )
 
+    async def publish_waiter_call(
+        self,
+        restaurant_id: UUID | str | int,
+        mesa_data: dict,
+        atendido: bool = False,
+    ) -> None:
+        """Transmite um chamado de garçom ou atendimento em tempo real para os garçons conectados."""
+        async with self._lock:
+            event_type = "mesa.garcom_atendido" if atendido else "mesa.garcom_chamado"
+            event = self._event(
+                event_type,
+                restaurant_id,
+                self._queue_version,
+                mesa=mesa_data,
+            )
+            deliveries = []
+            for subscription in tuple(self._subscriptions):
+                if (
+                    str(subscription.restaurant_id) == str(restaurant_id)
+                    and subscription.role in ("Garcom", "Gerente", "Adm")
+                ):
+                    deliveries.append(self._send_events(subscription, [event]))
+
+            if deliveries:
+                failed = await asyncio.gather(*deliveries)
+                self._subscriptions.difference_update(
+                    sub for sub in failed if sub is not None
+                )
+
     @staticmethod
     async def _send_events(
         subscription: Subscription,
