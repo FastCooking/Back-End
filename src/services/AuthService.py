@@ -65,8 +65,14 @@ class AuthService:
         usuario.bloqueadoAte = None
         self.db.commit()
 
-        token = criar_token(usuario.idUsuario, usuario.funcao)
-        return TokenResponse(access_token=token, funcao=usuario.funcao)
+        token = criar_token(usuario.idUsuario, usuario.funcao, usuario.idRestaurante)
+        return TokenResponse(
+            access_token=token,
+            funcao=usuario.funcao,
+            idUsuario=usuario.idUsuario,
+            idRestaurante=usuario.idRestaurante,
+            nome=usuario.nome,
+        )
 
     def _notificar_gerente(self, usuario: Usuario) -> None:
         """Registra a tentativa de bloqueio (log; pode evoluir para registro em tabela própria)."""

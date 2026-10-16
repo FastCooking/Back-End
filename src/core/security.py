@@ -20,10 +20,16 @@ EXPIRA_EM_MINUTOS = 60
 security_scheme = HTTPBearer()
 
 
-def criar_token(idUsuario: uuid.UUID | str, funcao: str) -> str:
-    """Gera um JWT contendo o id e o perfil do funcionário."""
+def criar_token(
+    idUsuario: uuid.UUID | str,
+    funcao: str,
+    idRestaurante: uuid.UUID | str | None = None,
+) -> str:
+    """Gera um JWT contendo o id, o perfil e o restaurante do funcionário."""
     expira = datetime.now(UTC) + timedelta(minutes=EXPIRA_EM_MINUTOS)
     payload = {"sub": str(idUsuario), "funcao": funcao, "exp": expira}
+    if idRestaurante:
+        payload["idRestaurante"] = str(idRestaurante)
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
