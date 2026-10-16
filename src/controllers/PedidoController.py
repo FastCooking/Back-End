@@ -3,6 +3,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
 from fastapi import status as http_status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocketDisconnect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -20,13 +21,27 @@ from src.services.PedidoService import PedidoService
 
 router = APIRouter(prefix="/pedidos", tags=["Pedidos"])
 
+security_optional = HTTPBearer(auto_error=False)
+
+
+def get_optional_user(
+    credenciais: HTTPAuthorizationCredentials | None = Depends(security_optional),
+    db: Session = Depends(get_db),
+) -> Usuario | None:
+    if credenciais is None:
+        return None
+    try:
+        return get_user_from_token(credenciais.credentials, db)
+    except Exception:
+        return None
+
 
 @router.post("", status_code=http_status.HTTP_201_CREATED)
 def criar_pedido(
     dados: PedidoCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom")),
+    usuario: Usuario | None = Depends(get_optional_user),
 ) -> dict:
     service = PedidoService(db)
     result = service.create(dados, usuario)
@@ -40,12 +55,21 @@ def adicionar_itens_ao_pedido(
     itens: list[PedidoItemCreate],
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom")),
+    usuario: Usuario | None = Depends(get_optional_user),
 ) -> dict:
     service = PedidoService(db)
     result = service.add_items(idPedido, itens, usuario)
     background_tasks.add_task(service.publish_events, result.pop("events"))
     return result
+
+
+@router.get("/{idPedido}")
+def obter_pedido(
+    idPedido: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    service = PedidoService(db)
+    return service.get_order(idPedido)
 
 
 @router.patch("/itens/{idItemPedido}/status")

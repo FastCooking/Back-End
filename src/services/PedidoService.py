@@ -20,34 +20,44 @@ class PedidoService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create(self, dados: PedidoCreate, usuario: Usuario) -> dict:
+    def create(self, dados: PedidoCreate, usuario: Usuario | None = None) -> dict:
         mesa = (
             self.db.query(Mesa)
-            .filter(
-                Mesa.idMesa == dados.idMesa,
-                Mesa.idRestaurante == usuario.idRestaurante,
-            )
+            .filter(Mesa.idMesa == dados.idMesa)
             .first()
         )
         if mesa is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
+                detail="Mesa não encontrada.",
+            )
+
+        if usuario is not None and mesa.idRestaurante != usuario.idRestaurante:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Mesa não encontrada neste restaurante.",
             )
 
+        idRestaurante = usuario.idRestaurante if usuario else mesa.idRestaurante
+        idGarcom = usuario.idUsuario if usuario else None
+
         cardapios = self._validate_menu_items(
-            dados.itens, usuario.idRestaurante
+            dados.itens, idRestaurante
         )
 
         try:
-            pedido = Pedido.create(
-                db=self.db,
-                idRestaurante=usuario.idRestaurante,
-                idMesa=mesa.idMesa,
-                idGarcom=usuario.idUsuario,
-                sessao_id=dados.sessao_id,
-                commit=False,
-            )
+            pedido = Pedido.get_active_for_table(self.db, mesa.idMesa)
+            if pedido is None or pedido.status in ("Fechado", "Cancelado"):
+                pedido = Pedido.create(
+                    db=self.db,
+                    idRestaurante=idRestaurante,
+                    idMesa=mesa.idMesa,
+                    idGarcom=idGarcom,
+                    sessao_id=dados.sessao_id,
+                    commit=False,
+                )
+            elif idGarcom and pedido.idGarcom is None:
+                pedido.idGarcom = idGarcom
 
             itens = [
                 ItemPedido.create(
@@ -91,11 +101,12 @@ class PedidoService:
         self,
         idPedido: uuid.UUID,
         itens: list[PedidoItemCreate],
-        usuario: Usuario,
+        usuario: Usuario | None = None,
     ) -> dict:
         pedido = self._get_assigned_order(idPedido, usuario)
+        idRestaurante = usuario.idRestaurante if usuario else pedido.idRestaurante
         cardapios = self._validate_menu_items(
-            itens, usuario.idRestaurante
+            itens, idRestaurante
         )
 
         try:
@@ -133,6 +144,24 @@ class PedidoService:
                 self._event_data("item.created", pedido, item)
                 for item in novos_itens
             ],
+        }
+
+    def get_order(self, idPedido: uuid.UUID) -> dict:
+        pedido = Pedido.get_by_id(self.db, idPedido)
+        if pedido is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Pedido não encontrado.",
+            )
+        itens = (
+            self.db.query(ItemPedido)
+            .filter(ItemPedido.idPedido == idPedido)
+            .order_by(ItemPedido.dataCriacao.asc())
+            .all()
+        )
+        return {
+            "pedido": self._pedido_data(pedido),
+            "itens": [self._item_data(item) for item in itens],
         }
 
     def update_item_status(
@@ -315,23 +344,22 @@ class PedidoService:
     def _get_assigned_order(
         self,
         idPedido: uuid.UUID,
-        usuario: Usuario,
+        usuario: Usuario | None = None,
     ) -> Pedido:
-        pedido = (
-            self.db.query(Pedido)
-            .filter(
-                Pedido.idPedido == idPedido,
-                Pedido.idRestaurante == usuario.idRestaurante,
-                Pedido.idGarcom == usuario.idUsuario,
-            )
-            .first()
-        )
+        query = self.db.query(Pedido).filter(Pedido.idPedido == idPedido)
+        if usuario is not None and getattr(usuario, "idRestaurante", None):
+            query = query.filter(Pedido.idRestaurante == usuario.idRestaurante)
+
+        pedido = query.first()
 
         if pedido is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Pedido não encontrado.",
             )
+
+        if usuario is not None and pedido.idGarcom is None and getattr(usuario, "funcao", None) == "Garcom":
+            pedido.idGarcom = usuario.idUsuario
 
         return pedido
 
@@ -396,10 +424,19 @@ class PedidoService:
             data_criacao,
         )
 
+        nome_item = item.cardapio.nome if item.cardapio else None
+        numero_mesa = (
+            item.pedido.mesa.numero
+            if (item.pedido and item.pedido.mesa)
+            else None
+        )
+
         return {
             "idItemPedido": str(item.idItemPedido),
             "idPedido": str(item.idPedido),
             "idCardapio": str(item.idCardapio),
+            "nomeItem": nome_item,
+            "numeroMesa": numero_mesa,
             "quantidade": item.quantidade,
             "precoUnitario": float(item.precoUnitario),
             "status": item.status,
