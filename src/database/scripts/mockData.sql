@@ -8,18 +8,19 @@ INSERT INTO "Restaurante" ("idRestaurante", "nome", "cnpj", "telefone", "email",
 ('22222222-2222-2222-2222-222222222222', 'FastCooking Filial Jardins', '98.765.432/0001-10', '(11) 91234-5678', 'contato@jardins.fastcooking.com', '01415-000', TRUE)
 ON CONFLICT ("idRestaurante") DO NOTHING;
 
--- 2. Usuários
+-- 2. Usuários (Senha padrão para todos: 123456)
 INSERT INTO "Usuarios" ("idUsuario", "idRestaurante", "nome", "cpf", "email", "senha", "funcao", "status") VALUES
-('a0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Carlos Gerente', '111.111.111-11', 'carlos.gerente@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Gerente', TRUE),
-('a0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Mariana Silva', '222.222.222-22', 'mariana.gerente@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Gerente', TRUE),
-('a0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'Joao Garcom', '333.333.333-33', 'joao.garcom@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Garcom', TRUE),
-('a0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'Ana Paula', '444.444.444-44', 'ana.garcom@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Garcom', TRUE),
-('a0000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'Lucas Mendes', '555.555.555-55', 'lucas.garcom@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Garcom', TRUE),
-('a0000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'Beatriz Costa', '666.666.666-66', 'beatriz.garcom@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Garcom', TRUE),
-('a0000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'Chef Rodrigo', '777.777.777-77', 'rodrigo.cozinha@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Cozinheiro', TRUE),
-('a0000000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'Amanda Chef', '888.888.888-88', 'amanda.cozinha@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Cozinheiro', TRUE),
-('a0000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'Fernando Cozinheiro', '999.999.999-99', 'fernando.cozinha@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Cozinheiro', TRUE),
-('a0000000-0000-0000-0000-000000000010', '11111111-1111-1111-1111-111111111111', 'Juliana Cozinheira', '000.000.000-00', 'juliana.cozinha@fastcooking.com', '$2b$12$e8p4hE9T5aC9aF0tHw2rSe7fG3hK1lM2nO3pQ4rS5tU6vW7xY8z0a', 'Cozinheiro', TRUE)
+('a0000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111111', 'Administrador FastCooking', '000.111.222-33', 'admin@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Adm', TRUE),
+('a0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Carlos Gerente', '111.111.111-11', 'carlos.gerente@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Gerente', TRUE),
+('a0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Mariana Silva', '222.222.222-22', 'mariana.gerente@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Gerente', TRUE),
+('a0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'Joao Garcom', '333.333.333-33', 'joao.garcom@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Garcom', TRUE),
+('a0000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'Ana Paula', '444.444.444-44', 'ana.garcom@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Garcom', TRUE),
+('a0000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'Lucas Mendes', '555.555.555-55', 'lucas.garcom@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Garcom', TRUE),
+('a0000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'Beatriz Costa', '666.666.666-66', 'beatriz.garcom@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Garcom', TRUE),
+('a0000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'Chef Rodrigo', '777.777.777-77', 'rodrigo.cozinha@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Cozinheiro', TRUE),
+('a0000000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'Amanda Chef', '888.888.888-88', 'amanda.cozinha@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Cozinheiro', TRUE),
+('a0000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'Fernando Cozinheiro', '999.999.999-99', 'fernando.cozinha@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Cozinheiro', TRUE),
+('a0000000-0000-0000-0000-000000000010', '11111111-1111-1111-1111-111111111111', 'Juliana Cozinheira', '000.000.000-00', 'juliana.cozinha@fastcooking.com', '$2b$12$Xs8OAPwFkuebFY548yaHhu6nJopBQgBIK/DD897/mMIR4uzOQz4aC', 'Cozinheiro', TRUE)
 ON CONFLICT ("idUsuario") DO NOTHING;
 
 -- 3. Mesas

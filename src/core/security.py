@@ -2,6 +2,7 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -10,7 +11,9 @@ from sqlalchemy.orm import Session
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
 
-SECRET_KEY = os.getenv("JWT_SECRET")
+load_dotenv()
+
+SECRET_KEY = os.getenv("JWT_SECRET") or "fastcooking_default_secret_key_change_in_prod"
 ALGORITHM = "HS256"
 EXPIRA_EM_MINUTOS = 60
 
