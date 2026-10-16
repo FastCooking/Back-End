@@ -16,6 +16,7 @@ load_dotenv()
 SECRET_KEY = os.getenv("JWT_SECRET") or "fastcooking_default_secret_key_change_in_prod"
 ALGORITHM = "HS256"
 EXPIRA_EM_MINUTOS = 60
+REFRESH_EXPIRA_EM_DIAS = 7
 
 security_scheme = HTTPBearer()
 
@@ -31,6 +32,44 @@ def criar_token(
     if idRestaurante:
         payload["idRestaurante"] = str(idRestaurante)
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def criar_refresh_token(idUsuario: uuid.UUID | str) -> str:
+    """Gera um JWT de longa duração para renovação do access token."""
+    expira = datetime.now(UTC) + timedelta(days=REFRESH_EXPIRA_EM_DIAS)
+    payload = {"sub": str(idUsuario), "type": "refresh", "exp": expira}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def validar_refresh_token(refresh_token: str, db: Session) -> Usuario:
+    """Valida um refresh token e retorna o usuário correspondente se ativo."""
+    excecao = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Refresh token inválido ou expirado.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        if not SECRET_KEY:
+            raise excecao
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise excecao
+        idUsuario = payload.get("sub")
+        if idUsuario is None:
+            raise excecao
+        id_uuid = uuid.UUID(str(idUsuario))
+    except (JWTError, TypeError, ValueError):
+        raise excecao
+
+    usuario = Usuario.get_by_id(db, id_uuid)
+    if (
+        usuario is None
+        or not usuario.status
+        or (usuario.restaurante and not usuario.restaurante.status)
+    ):
+        raise excecao
+
+    return usuario
 
 
 def get_current_user(

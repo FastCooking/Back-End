@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from src.core.security import criar_token
+from src.core.security import criar_refresh_token, criar_token, validar_refresh_token
 from src.models.Usuario import Usuario
-from src.schemas.AuthSchema import LoginRequest, TokenResponse
+from src.schemas.AuthSchema import LoginRequest, RefreshTokenRequest, TokenResponse
 from src.services.UsuarioService import verificar_senha
 
 MAX_TENTATIVAS = 3
@@ -66,8 +66,25 @@ class AuthService:
         self.db.commit()
 
         token = criar_token(usuario.idUsuario, usuario.funcao, usuario.idRestaurante)
+        refresh_token = criar_refresh_token(usuario.idUsuario)
         return TokenResponse(
             access_token=token,
+            refresh_token=refresh_token,
+            funcao=usuario.funcao,
+            idUsuario=usuario.idUsuario,
+            idRestaurante=usuario.idRestaurante,
+            nome=usuario.nome,
+        )
+
+    def refresh(self, dados: RefreshTokenRequest) -> TokenResponse:
+        usuario = validar_refresh_token(dados.refresh_token, self.db)
+        novo_access_token = criar_token(
+            usuario.idUsuario, usuario.funcao, usuario.idRestaurante
+        )
+        novo_refresh_token = criar_refresh_token(usuario.idUsuario)
+        return TokenResponse(
+            access_token=novo_access_token,
+            refresh_token=novo_refresh_token,
             funcao=usuario.funcao,
             idUsuario=usuario.idUsuario,
             idRestaurante=usuario.idRestaurante,
