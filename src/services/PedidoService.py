@@ -1,5 +1,6 @@
-import uuid
 from collections.abc import Iterable
+from datetime import UTC, datetime
+import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -162,6 +163,72 @@ class PedidoService:
         return {
             "pedido": self._pedido_data(pedido),
             "itens": [self._item_data(item) for item in itens],
+        }
+
+    def get_order_tracking(self, idPedido: uuid.UUID) -> dict:
+        pedido = Pedido.get_by_id(self.db, idPedido)
+        if not pedido:
+            return {"type": "ERROR", "message": "Pedido não encontrado."}
+
+        itens = (
+            self.db.query(ItemPedido)
+            .filter(ItemPedido.idPedido == idPedido)
+            .order_by(ItemPedido.dataCriacao.asc())
+            .all()
+        )
+
+        item_statuses = [it.status for it in itens]
+        if not item_statuses or all(s == "Pendente" for s in item_statuses):
+            overall_status = "PENDING"
+        elif any(s == "Em preparo" for s in item_statuses):
+            overall_status = "IN_PREPARATION"
+        elif all(s in ("Pronto", "Entregue") for s in item_statuses) and any(s == "Pronto" for s in item_statuses):
+            overall_status = "READY"
+        elif all(s == "Entregue" for s in item_statuses):
+            overall_status = "DELIVERED"
+        elif all(s == "Cancelado" for s in item_statuses):
+            overall_status = "CANCELLED"
+        else:
+            overall_status = "IN_PREPARATION"
+
+        table_number = pedido.mesa.numero if pedido.mesa else None
+        status_map = {
+            "Pendente": "PENDING",
+            "Em preparo": "IN_PREPARATION",
+            "Pronto": "READY",
+            "Entregue": "DELIVERED",
+            "Cancelado": "CANCELLED",
+        }
+
+        created_at = (
+            pedido.dataAbertura.isoformat()
+            if getattr(pedido, "dataAbertura", None)
+            else datetime.now(UTC).isoformat()
+        )
+
+        return {
+            "type": "ORDER_UPDATE",
+            "order": {
+                "id": str(pedido.idPedido),
+                "customerName": f"Mesa {table_number}" if table_number else "Cliente",
+                "tableNumber": table_number,
+                "status": overall_status,
+                "estimatedMinutesMin": 15,
+                "estimatedMinutesMax": 30,
+                "queuePosition": 1,
+                "createdAt": created_at,
+                "updatedAt": datetime.now(UTC).isoformat(),
+                "items": [
+                    {
+                        "id": str(it.idItemPedido),
+                        "name": it.cardapio.nome if it.cardapio else "Item",
+                        "quantity": it.quantidade,
+                        "notes": it.observacao or "",
+                        "status": status_map.get(it.status, it.status),
+                    }
+                    for it in itens
+                ],
+            },
         }
 
     def update_item_status(

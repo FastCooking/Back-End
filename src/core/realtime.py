@@ -9,6 +9,15 @@ from fastapi.websockets import WebSocketDisconnect
 SEND_TIMEOUT_SECONDS = 0.4
 
 
+STATUS_MAP_FRONTEND = {
+    "Pendente": "PENDING",
+    "Em preparo": "IN_PREPARATION",
+    "Pronto": "READY",
+    "Entregue": "DELIVERED",
+    "Cancelado": "CANCELLED",
+}
+
+
 @dataclass(eq=False)
 class Subscription:
     websocket: WebSocket
@@ -18,11 +27,18 @@ class Subscription:
     sequence: int = 0
 
 
+@dataclass(eq=False)
+class TrackingSubscription:
+    websocket: WebSocket
+    order_id: str
+
+
 class RealtimeHub:
-    """In-process WebSocket fan-out for authorized restaurant staff."""
+    """In-process WebSocket fan-out for authorized restaurant staff and customer order tracking."""
 
     def __init__(self) -> None:
         self._subscriptions: set[Subscription] = set()
+        self._tracking_subscriptions: set[TrackingSubscription] = set()
         self._lock = asyncio.Lock()
         self._queue_version = 0
 
@@ -127,6 +143,36 @@ class RealtimeHub:
                 if subscription.websocket is not websocket
             }
 
+    async def connect_tracking(
+        self,
+        websocket: WebSocket,
+        order_id: UUID | str,
+        snapshot_factory,
+    ) -> None:
+        """Register a tracking subscription and deliver initial snapshot."""
+        subscription = TrackingSubscription(websocket, str(order_id))
+        async with self._lock:
+            self._tracking_subscriptions.add(subscription)
+
+        snapshot = snapshot_factory()
+        if snapshot:
+            try:
+                await asyncio.wait_for(
+                    websocket.send_json(snapshot),
+                    timeout=SEND_TIMEOUT_SECONDS,
+                )
+            except Exception:
+                await self.disconnect_tracking(websocket)
+                raise
+
+    async def disconnect_tracking(self, websocket: WebSocket) -> None:
+        async with self._lock:
+            self._tracking_subscriptions = {
+                subscription
+                for subscription in self._tracking_subscriptions
+                if subscription.websocket is not websocket
+            }
+
     async def publish_item_event(
         self,
         event_type: str,
@@ -163,11 +209,15 @@ class RealtimeHub:
 
                 if subscription.role == "Cozinheiro":
                     recipient = True
+                elif subscription.role == "Garcom":
+                    # RF06: If item is ready (Pronto), notify ALL waiters of the restaurant.
+                    # Otherwise, notify the assigned waiter.
+                    if item_data.get("status") == "Pronto" or not assigned_waiter_id:
+                        recipient = True
+                    else:
+                        recipient = assigned_waiter_id == subscription.user_id
                 else:
-                    recipient = (
-                        subscription.role == "Garcom"
-                        and assigned_waiter_id == subscription.user_id
-                    )
+                    recipient = False
 
                 if recipient:
                     deliveries.append(
@@ -181,6 +231,31 @@ class RealtimeHub:
                 for subscription in failed
                 if subscription is not None
             )
+
+            # Dispatch to customer tracking subscribers
+            order_id_str = str(item_data.get("idPedido", ""))
+            tracking_deliveries = []
+            for t_sub in tuple(self._tracking_subscriptions):
+                if t_sub.order_id == order_id_str:
+                    item_status_frontend = STATUS_MAP_FRONTEND.get(
+                        item_data.get("status", ""), item_data.get("status", "")
+                    )
+                    tracking_event = {
+                        "type": "ITEM_UPDATE",
+                        "item": {
+                            "id": str(item_data.get("idItemPedido", "")),
+                            "status": item_status_frontend,
+                        },
+                    }
+                    tracking_deliveries.append(
+                        self._send_tracking_event(t_sub, tracking_event)
+                    )
+
+            if tracking_deliveries:
+                failed_tracking = await asyncio.gather(*tracking_deliveries)
+                self._tracking_subscriptions.difference_update(
+                    sub for sub in failed_tracking if sub is not None
+                )
 
     @staticmethod
     async def _send_events(
@@ -201,6 +276,26 @@ class RealtimeHub:
                     timeout=SEND_TIMEOUT_SECONDS,
                 )
 
+        except (
+            OSError,
+            RuntimeError,
+            TimeoutError,
+            WebSocketDisconnect,
+        ):
+            return subscription
+
+        return None
+
+    @staticmethod
+    async def _send_tracking_event(
+        subscription: TrackingSubscription,
+        event: dict,
+    ) -> TrackingSubscription | None:
+        try:
+            await asyncio.wait_for(
+                subscription.websocket.send_json(event),
+                timeout=SEND_TIMEOUT_SECONDS,
+            )
         except (
             OSError,
             RuntimeError,

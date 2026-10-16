@@ -72,6 +72,60 @@ def obter_pedido(
     return service.get_order(idPedido)
 
 
+@router.get("/{idPedido}/tracking")
+def obter_tracking_pedido(
+    idPedido: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    service = PedidoService(db)
+    return service.get_order_tracking(idPedido)
+
+
+@router.websocket("/tracking/{idPedido}")
+@router.websocket("/ws/tracking/{idPedido}")
+async def tracking_websocket(
+    websocket: WebSocket,
+    idPedido: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> None:
+    await handle_tracking_websocket(websocket, idPedido, db)
+
+
+async def handle_tracking_websocket(
+    websocket: WebSocket,
+    idPedido: uuid.UUID,
+    db: Session,
+) -> None:
+    await websocket.accept()
+    service = PedidoService(db)
+    snapshot = service.get_order_tracking(idPedido)
+    if snapshot.get("type") == "ERROR":
+        await websocket.send_json(snapshot)
+        await websocket.close(code=4404)
+        return
+
+    await realtime_hub.connect_tracking(
+        websocket=websocket,
+        order_id=idPedido,
+        snapshot_factory=lambda: service.get_order_tracking(idPedido),
+    )
+
+    try:
+        while True:
+            try:
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                if msg == "ping":
+                    await websocket.send_text("pong")
+            except TimeoutError:
+                pass
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        await websocket.close(code=1011)
+    finally:
+        await realtime_hub.disconnect_tracking(websocket)
+
+
 @router.patch("/itens/{idItemPedido}/status")
 def alterar_status_item(
     idItemPedido: uuid.UUID,
