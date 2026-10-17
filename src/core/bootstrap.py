@@ -74,6 +74,21 @@ def garantir_usuario_admin(db: Session | None = None) -> Usuario | None:
             commit=True,
         )
         logger.info("Usuário administrador '%s' criado com sucesso.", admin_email)
+
+        # Garante também o usuário fastback
+        if not Usuario.get_by_email(db, "fastback@fastcooking.com.br"):
+            Usuario.create(
+                db=db,
+                idRestaurante=restaurante.idRestaurante,
+                nome="FastBack Administrador",
+                cpf="999.888.777-66",
+                email="fastback@fastcooking.com.br",
+                senha=senha_hash,
+                funcao="Adm",
+                commit=True,
+            )
+            logger.info("Usuário administrador 'fastback@fastcooking.com.br' criado com sucesso.")
+
         return novo_admin
     except Exception as e:
         db.rollback()

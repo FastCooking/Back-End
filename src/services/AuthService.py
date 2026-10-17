@@ -17,7 +17,13 @@ class AuthService:
         self.db = db
 
     def login(self, dados: LoginRequest) -> TokenResponse:
-        usuario = Usuario.get_by_email(self.db, dados.email)
+        termo = dados.email.strip()
+        usuario = Usuario.get_by_email(self.db, termo)
+
+        if not usuario and "@" not in termo:
+            usuario = Usuario.get_by_email(self.db, f"{termo}@fastcooking.com.br")
+            if not usuario:
+                usuario = Usuario.get_by_email(self.db, f"{termo}@fastcooking.com")
 
         if not usuario:
             raise HTTPException(
