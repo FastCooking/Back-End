@@ -75,21 +75,25 @@ class Mesa(Base):
             query = query.filter(cls.status == status)
         return query.order_by(cls.numero).all()
 
-    def update_stats(self, db: Session, novo_status: str) -> "Mesa":
+    def update_stats(self, db: Session, novo_status: str, commit: bool = True) -> "Mesa":
         """Atualiza apenas o status da mesa ('livre' ou 'ocupada')."""
         self.status = novo_status
-        db.commit()
-        db.refresh(self)
+        if commit:
+            db.commit()
+            db.refresh(self)
         return self
 
-    def update(self, db: Session, numero: int | None = None, status: str | None = None) -> "Mesa":
+    def update(
+        self, db: Session, numero: int | None = None, status: str | None = None, commit: bool = True
+    ) -> "Mesa":
         """Atualiza os dados cadastrais da mesa."""
         if numero is not None:
             self.numero = numero
         if status is not None:
             self.status = status
-        db.commit()
-        db.refresh(self)
+        if commit:
+            db.commit()
+            db.refresh(self)
         return self
 
     def delete(self, db: Session) -> bool:
