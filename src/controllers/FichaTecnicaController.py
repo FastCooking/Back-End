@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from src.core.security import exigir_funcao
 from src.database.connection import get_db
+from src.models.Usuario import Usuario
 from src.schemas.FichaTecnicaSchema import (
     FichaTecnicaCompletaResponseDTO,
     FichaTecnicaCreateDTO,
@@ -20,7 +22,11 @@ router = APIRouter(prefix="/fichas-tecnica", tags=["fichas-tecnica"])
     response_model=FichaTecnicaResponseDTO,
     status_code=status.HTTP_201_CREATED,
 )
-def criar_ficha_tecnica(payload: FichaTecnicaCreateDTO, db: Session = Depends(get_db)):
+def criar_ficha_tecnica(
+    payload: FichaTecnicaCreateDTO,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
+):
     try:
         service = FichaTecnicaService(db)
         existe = bool(service.repository.get_by_cardapio(payload.idCardapio))
@@ -48,6 +54,7 @@ def atualizar_ficha_tecnica_por_cardapio(
     idCardapio: uuid.UUID,
     payload: FichaTecnicaCreateDTO,
     db: Session = Depends(get_db),
+    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     if payload.idCardapio != idCardapio:
         raise HTTPException(

@@ -6,6 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
+from src.core.security import exigir_funcao
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
 from src.schemas.CardapioSchema import (
@@ -51,7 +52,7 @@ router = APIRouter(
 async def criar_item(
     request: Request,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     service = CardapioService(db)
     content_type = request.headers.get("content-type", "")
@@ -130,7 +131,7 @@ async def editar_item(
     idCardapio: uuid.UUID,
     request: Request,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     service = CardapioService(db)
     content_type = request.headers.get("content-type", "")
@@ -180,7 +181,7 @@ async def editar_item_post(
     idCardapio: uuid.UUID,
     request: Request,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     return await editar_item(
         idCardapio=idCardapio,
@@ -198,7 +199,7 @@ async def editar_item_post(
 def excluir_item(
     idCardapio: uuid.UUID,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     service = CardapioService(db)
 

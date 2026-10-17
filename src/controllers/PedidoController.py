@@ -169,6 +169,98 @@ def cancelar_item(
     return result
 
 
+from pydantic import BaseModel
+from src.models.Pagamento import Pagamento
+from src.models.Mesa import Mesa
+from src.models.Sessao import Sessao
+from src.models.Pedido import Pedido
+from datetime import datetime
+
+class PagamentoCreateRequest(BaseModel):
+    formaPagamento: str
+    valor: float | None = None
+
+
+@router.post("/{idPedido}/pagamento", status_code=http_status.HTTP_201_CREATED)
+def registrar_pagamento(
+    idPedido: uuid.UUID,
+    dados: PagamentoCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    pedido = Pedido.get_by_id(db, idPedido)
+    if not pedido or pedido.idRestaurante != usuario.idRestaurante:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Pedido não encontrado.",
+        )
+
+    if pedido.status in ("Fechado", "Cancelado"):
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="Este pedido já foi encerrado.",
+        )
+
+    # Calcula valor total se não informado
+    valor_total = dados.valor
+    if valor_total is None or valor_total <= 0:
+        dados_pedido = service.get_order(idPedido)
+        valor_total = float(dados_pedido.get("total", 0.0))
+
+    # Cria pagamento
+    pagamento = Pagamento.create(
+        db,
+        idPedido=idPedido,
+        formaPagamento=dados.formaPagamento,
+        valor=valor_total,
+    )
+
+    # Fecha o pedido
+    pedido.update_stats(db, "Fechado", commit=False)
+    pedido.dataFechamento = datetime.now()
+
+    # Libera a mesa
+    mesa = Mesa.get_by_id(db, pedido.idMesa)
+    if mesa:
+        mesa.update(db, status="Disponivel", commit=False)
+
+    # Encerra sessão da mesa se existir
+    sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta").all()
+    for s in sessoes_abertas:
+        s.status = "Fechada"
+
+    db.commit()
+    db.refresh(pedido)
+    if mesa:
+        db.refresh(mesa)
+
+    event_payload = {
+        "type": "order.closed",
+        "idPedido": str(idPedido),
+        "idMesa": str(pedido.idMesa),
+        "status": "Fechado",
+        "valor": float(valor_total),
+        "formaPagamento": dados.formaPagamento,
+    }
+    background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, event_payload)
+
+    return {
+        "message": f"Pagamento de R$ {valor_total:.2f} registrado com sucesso. Pedido encerrado e mesa liberada.",
+        "pagamento": {
+            "idPagamento": str(pagamento.idPagamento),
+            "formaPagamento": pagamento.formaPagamento,
+            "valor": float(pagamento.valor),
+        },
+        "pedido": {
+            "idPedido": str(pedido.idPedido),
+            "status": pedido.status,
+            "idMesa": str(pedido.idMesa),
+        },
+    }
+
+
 @router.get("/kds/fila")
 def obter_fila(
     db: Session = Depends(get_db),

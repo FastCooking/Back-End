@@ -1,10 +1,9 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from src.core.security import get_user_from_token
+from src.core.security import exigir_funcao
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
 from src.schemas.EstoqueSchema import (
@@ -16,26 +15,12 @@ from src.services.EstoqueService import EstoqueService
 
 router = APIRouter(prefix="/insumos", tags=["insumos"])
 
-security_optional = HTTPBearer(auto_error=False)
-
-
-def get_optional_user(
-    credenciais: HTTPAuthorizationCredentials | None = Depends(security_optional),
-    db: Session = Depends(get_db),
-) -> Usuario | None:
-    if credenciais is None:
-        return None
-    try:
-        return get_user_from_token(credenciais.credentials, db)
-    except Exception:
-        return None
-
 
 @router.post("", response_model=EstoqueResponseDTO, status_code=status.HTTP_201_CREATED)
 def criar_insumo(
     payload: EstoqueCreateDTO,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     try:
         service = EstoqueService(db)
@@ -55,7 +40,7 @@ def criar_insumo(
 def buscar_insumo_por_id(
     idEstoque: uuid.UUID,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm", "Cozinheiro")),
 ):
     try:
         service = EstoqueService(db)
@@ -73,7 +58,7 @@ def buscar_insumo_por_id(
 def listar_insumos(
     idRestaurante: uuid.UUID | None = Query(default=None, description="Filtrar por Restaurante"),
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm", "Cozinheiro")),
 ):
     try:
         service = EstoqueService(db)
@@ -93,7 +78,7 @@ def atualizar_insumo(
     idEstoque: uuid.UUID,
     payload: EstoqueUpdateDTO,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     try:
         service = EstoqueService(db)
@@ -111,7 +96,7 @@ def atualizar_insumo(
 def excluir_insumo(
     idEstoque: uuid.UUID,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     try:
         service = EstoqueService(db)
