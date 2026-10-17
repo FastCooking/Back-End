@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 import bcrypt
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -79,8 +79,11 @@ class Usuario(Base):
 
     @classmethod
     def get_by_email(cls, db: Session, email: str) -> Optional["Usuario"]:
-        """Busca funcionário por e-mail único."""
-        return db.query(cls).filter(cls.idUsuario.isnot(None), cls.email == email).first()
+        """Busca funcionário por e-mail único (case-insensitive)."""
+        if not email:
+            return None
+        email_limpo = email.strip().lower()
+        return db.query(cls).filter(cls.idUsuario.isnot(None), func.lower(cls.email) == email_limpo).first()
 
     @classmethod
     def get_all_by_restaurante(
