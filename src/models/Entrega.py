@@ -1,7 +1,15 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -78,4 +86,3 @@ class Entrega(Base):
             f"<Entrega(id={self.idEntrega}, item={self.idItemPedido}, "
             f"garcom={self.idGarcom}, status='{self.status}')>"
         )
-

@@ -113,4 +113,3 @@ def listar_fila_entregas_prontas(
     """
     service = DeliveryService(db)
     return service.list_ready_queue(restaurant_id=usuario.idRestaurante)
-

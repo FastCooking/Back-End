@@ -56,7 +56,9 @@ class QueuedDeliveryItemSchema(BaseModel):
         default=DeliveryState.WAITING_DELIVERY_PICKUP.value,
         description="Status na fila de espera (WAITING_DELIVERY_PICKUP)",
     )
-    createdAt: str = Field(..., description="Timestamp ISO 8601 de entrada na fila (FIFO)")
+    createdAt: str = Field(
+        ..., description="Timestamp ISO 8601 de entrada na fila (FIFO)"
+    )
 
 
 class DeliveryClaimedResponseSchema(BaseModel):
@@ -146,4 +148,3 @@ class DeliveryClaimedEvent:
             claimedByWaiterId=str(self.claimed_by_waiter_id),
             timestamp=self.timestamp,
         )
-

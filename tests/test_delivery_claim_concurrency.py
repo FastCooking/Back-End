@@ -1,8 +1,8 @@
+import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
-import threading
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +16,6 @@ from src.models.Cardapio import Cardapio
 from src.models.Entrega import Entrega
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
-from src.models.Pedido import Pedido
 from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario
 from src.schemas.DeliverySchema import DeliveryClaimedWsPayloadSchema, DeliveryState
@@ -234,7 +233,9 @@ def test_concurrent_waiters_claiming_same_item_only_one_wins_and_others_get_409(
         results = [f.result() for f in futures]
 
     status_codes = [res.status_code for _, res in results]
-    assert 500 not in status_codes, f"Erro 500 detectado: {[r.text for _, r in results]}"
+    assert 500 not in status_codes, (
+        f"Erro 500 detectado: {[r.text for _, r in results]}"
+    )
     assert status_codes.count(200) == 1
     assert status_codes.count(409) == num_waiters - 1
 
@@ -252,9 +253,7 @@ def test_concurrent_waiters_claiming_same_item_only_one_wins_and_others_get_409(
     # Verifica persistência ACID no banco de dados
     with session_factory() as db:
         entregas = (
-            db.query(Entrega)
-            .filter(Entrega.idItemPedido == uuid.UUID(item_id))
-            .all()
+            db.query(Entrega).filter(Entrega.idItemPedido == uuid.UUID(item_id)).all()
         )
         assert len(entregas) == 1
         assert entregas[0].idGarcom == winner_id
@@ -375,7 +374,9 @@ def test_fifo_queue_and_reactive_dispatch_on_delivery_completion(delivery_env):
     w1_token = _waiter_token(w1_id, ids["restaurant"])
 
     # 1. Cria item inicial e Garçom 1 assume
-    active_item_id = _create_ready_item(client, ids, mesa_key="mesa_10", prato_key="prato_1")
+    active_item_id = _create_ready_item(
+        client, ids, mesa_key="mesa_10", prato_key="prato_1"
+    )
     claim_res = client.post(
         "/api/deliveries/claim",
         headers={"Authorization": f"Bearer {w1_token}"},
@@ -386,17 +387,33 @@ def test_fifo_queue_and_reactive_dispatch_on_delivery_completion(delivery_env):
 
     # 2. Dois novos itens ficam prontos enquanto o garçom está ocupado (Backlog FIFO)
     fifo_item_oldest = _create_ready_item(
-        client, ids, mesa_key="mesa_10", prato_key="prato_2", observacao="Primeiro da fila FIFO"
+        client,
+        ids,
+        mesa_key="mesa_10",
+        prato_key="prato_2",
+        observacao="Primeiro da fila FIFO",
     )
     fifo_item_newest = _create_ready_item(
-        client, ids, mesa_key="mesa_22", prato_key="prato_1", observacao="Segundo da fila FIFO"
+        client,
+        ids,
+        mesa_key="mesa_22",
+        prato_key="prato_1",
+        observacao="Segundo da fila FIFO",
     )
 
     # Garante timestamps determinísticos para testar a ordenação estrita FIFO
     base_time = datetime.now(UTC)
     with session_factory() as db:
-        it_old = db.query(ItemPedido).filter_by(idItemPedido=uuid.UUID(fifo_item_oldest)).one()
-        it_new = db.query(ItemPedido).filter_by(idItemPedido=uuid.UUID(fifo_item_newest)).one()
+        it_old = (
+            db.query(ItemPedido)
+            .filter_by(idItemPedido=uuid.UUID(fifo_item_oldest))
+            .one()
+        )
+        it_new = (
+            db.query(ItemPedido)
+            .filter_by(idItemPedido=uuid.UUID(fifo_item_newest))
+            .one()
+        )
         it_old.dataCriacao = base_time - timedelta(minutes=5)
         it_new.dataCriacao = base_time - timedelta(minutes=1)
         db.commit()
@@ -494,4 +511,3 @@ def test_claim_returns_404_when_item_does_not_exist_or_is_not_ready(delivery_env
     )
     assert not_ready_res.status_code == 404
     assert not_ready_res.json()["code"] == "ITEM_NOT_READY"
-

@@ -60,8 +60,7 @@ class _KeyedLockRegistry:
         acquired: list[threading.RLock] = []
         with self._guard:
             locks_to_acquire = [
-                self._locks.setdefault(k, threading.RLock())
-                for k in sorted_unique_keys
+                self._locks.setdefault(k, threading.RLock()) for k in sorted_unique_keys
             ]
         try:
             for lock in locks_to_acquire:
@@ -268,14 +267,10 @@ class DeliveryService:
                 raise
 
             table_number = (
-                pedido.mesa.numero
-                if pedido.mesa is not None
-                else str(pedido.idMesa)
+                pedido.mesa.numero if pedido.mesa is not None else str(pedido.idMesa)
             )
             item_name = (
-                item.cardapio.nome
-                if item.cardapio is not None
-                else "Item do Cardápio"
+                item.cardapio.nome if item.cardapio is not None else "Item do Cardápio"
             )
             claimed_iso = (
                 entrega.claimedAt.isoformat()
@@ -404,14 +399,10 @@ class DeliveryService:
                     else item.claimedByWaiterId
                 )
 
-                is_active_delivery = (
-                    assigned_waiter_id is not None
-                    and (
-                        item.deliveryStatus in ACTIVE_DELIVERY_STATES
-                        or (
-                            entrega is not None
-                            and entrega.status in ACTIVE_DELIVERY_STATES
-                        )
+                is_active_delivery = assigned_waiter_id is not None and (
+                    item.deliveryStatus in ACTIVE_DELIVERY_STATES
+                    or (
+                        entrega is not None and entrega.status in ACTIVE_DELIVERY_STATES
                     )
                 )
 
@@ -423,10 +414,7 @@ class DeliveryService:
                         message="O item informado não possui uma entrega ativa em andamento.",
                     )
 
-                if (
-                    waiter.funcao == "Garcom"
-                    and assigned_waiter_id != waiter.idUsuario
-                ):
+                if waiter.funcao == "Garcom" and assigned_waiter_id != waiter.idUsuario:
                     self.db.rollback()
                     raise DeliveryDomainError(
                         status_code=status.HTTP_409_CONFLICT,
@@ -475,9 +463,7 @@ class DeliveryService:
                 raise
 
             table_number = (
-                pedido.mesa.numero
-                if pedido.mesa is not None
-                else str(pedido.idMesa)
+                pedido.mesa.numero if pedido.mesa is not None else str(pedido.idMesa)
             )
             delivered_iso = (
                 entrega.deliveredAt.isoformat()
@@ -597,14 +583,10 @@ class DeliveryService:
         for item, pedido in rows:
             entrega = self._ensure_waiting_entrega(item, pedido)
             table_number = (
-                pedido.mesa.numero
-                if pedido.mesa is not None
-                else str(pedido.idMesa)
+                pedido.mesa.numero if pedido.mesa is not None else str(pedido.idMesa)
             )
             item_name = (
-                item.cardapio.nome
-                if item.cardapio is not None
-                else "Item do Cardápio"
+                item.cardapio.nome if item.cardapio is not None else "Item do Cardápio"
             )
             created_iso = (
                 item.dataCriacao.isoformat()
@@ -752,4 +734,3 @@ class DeliveryService:
             self.db.add(entrega)
             self.db.flush()
         return entrega
-
