@@ -16,32 +16,44 @@ class SessaoService:
 
     @staticmethod
     def verificar_expiracao(sessao: Sessao, db: Session, limite_minutos: int = 10) -> bool:
-        """Retorna True se a sessão estiver inativa há mais de limite_minutos."""
-        agora = datetime.now()
-        data_referencia = sessao.dataAbertura
+        """Retorna True se a sessão estiver inativa há mais de limite_minutos sem nenhum pedido de item."""
+        def _to_utc_naive(dt):
+            if dt is None:
+                return None
+            if hasattr(dt, "tzinfo") and dt.tzinfo is not None:
+                return dt.astimezone(UTC).replace(tzinfo=None)
+            return dt
 
-        # Verifica se há pedido associado à mesa com itens recentes
-        pedido_ativo = Pedido.get_active_for_table(db, sessao.idMesa)
-        if pedido_ativo:
-            itens = (
-                db.query(ItemPedido)
-                .filter(ItemPedido.idPedido == pedido_ativo.idPedido)
-                .order_by(ItemPedido.dataCriacao.desc())
-                .first()
-            )
-            if itens and itens.dataCriacao:
-                data_referencia = itens.dataCriacao
-            elif pedido_ativo.dataAbertura:
-                data_referencia = pedido_ativo.dataAbertura
-
+        data_referencia = _to_utc_naive(sessao.dataAbertura)
         if data_referencia is None:
             return False
 
-        if hasattr(data_referencia, "tzinfo") and data_referencia.tzinfo is not None:
-            agora = datetime.now(UTC)
+        # Verifica se há pedido associado à mesa com itens
+        pedido_ativo = Pedido.get_active_for_table(db, sessao.idMesa)
+        if pedido_ativo:
+            itens_count = (
+                db.query(ItemPedido)
+                .filter(ItemPedido.idPedido == pedido_ativo.idPedido, ItemPedido.status != "Cancelado")
+                .count()
+            )
+            # Se tem itens confirmados, a mesa tem pedido e portanto NÃO deve expirar por falta de pedido
+            if itens_count > 0:
+                return False
 
-        diferenca = agora - data_referencia
-        return diferenca > timedelta(minutes=limite_minutos)
+            if pedido_ativo.dataAbertura:
+                data_referencia = _to_utc_naive(pedido_ativo.dataAbertura)
+
+        agora_utc = datetime.now(UTC).replace(tzinfo=None)
+        agora_local = datetime.now()
+
+        diff_utc = (agora_utc - data_referencia).total_seconds()
+        diff_local = (agora_local - data_referencia).total_seconds()
+
+        # Usa a menor diferença não-negativa
+        candidatos = [d for d in (diff_utc, diff_local) if d >= 0]
+        segundos = min(candidatos) if candidatos else max(diff_utc, diff_local)
+
+        return segundos >= (limite_minutos * 60)
 
     @staticmethod
     def expirar_sessoes_inativas(db: Session, limite_minutos: int = 10) -> list[Sessao]:
@@ -55,10 +67,18 @@ class SessaoService:
                 sessao.dataEncerramento = func.now()
 
                 pedido_ativo = Pedido.get_active_for_table(db, sessao.idMesa)
-                if pedido_ativo is None or pedido_ativo.status in ("Fechado", "Cancelado"):
-                    mesa = Mesa.get_by_id(db, sessao.idMesa)
-                    if mesa and mesa.status != "Disponivel":
-                        mesa.status = "Disponivel"
+                if pedido_ativo:
+                    itens_count = (
+                        db.query(ItemPedido)
+                        .filter(ItemPedido.idPedido == pedido_ativo.idPedido, ItemPedido.status != "Cancelado")
+                        .count()
+                    )
+                    if itens_count == 0:
+                        pedido_ativo.status = "Cancelado"
+
+                mesa = Mesa.get_by_id(db, sessao.idMesa)
+                if mesa and mesa.status != "Disponivel":
+                    mesa.status = "Disponivel"
 
                 expiradas.append(sessao)
 

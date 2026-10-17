@@ -33,6 +33,7 @@ def listar_mesas(
     status: str | None = Query(None, description="Filtro opcional por status"),
     db: Session = Depends(get_db),
 ):
+    SessaoService.expirar_sessoes_inativas(db, limite_minutos=10)
     mesas = Mesa.get_all_by_restaurant(db, idRestaurante, status)
     return mesas
 
