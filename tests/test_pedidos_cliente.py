@@ -146,7 +146,28 @@ def test_cliente_pode_criar_pedido_e_comanda_compartilhada(pedido_env):
         res_add = client.post(f"/pedidos/{id_pedido_1}/itens", json=payload_add)
         assert res_add.status_code == 201
         res_get2 = client.get(f"/pedidos/{id_pedido_1}")
-        assert len(res_get2.json()["itens"]) == 3
+        # 5. Lista pedidos por GET /pedidos (com token de Garcom ou Gerente)
+        token_garcom = security.criar_token(
+            pedido_env["garcom"].idUsuario, "Garcom", pedido_env["idRestaurante"]
+        )
+        res_list = client.get("/pedidos", headers={"Authorization": f"Bearer {token_garcom}"})
+        assert res_list.status_code == 200, res_list.text
+        pedidos_list = res_list.json()
+        assert len(pedidos_list) == 1
+        assert pedidos_list[0]["idPedido"] == id_pedido_1
+        assert pedidos_list[0]["numeroMesa"] == 10
+        assert len(pedidos_list[0]["itens"]) == 3
+
+        # Teste com filtro tipo=ativos
+        res_ativos = client.get("/pedidos?tipo=ativos", headers={"Authorization": f"Bearer {token_garcom}"})
+        assert res_ativos.status_code == 200
+        assert len(res_ativos.json()) == 1
+
+        # Teste com filtro tipo=historico (deve vir vazio pois está aberto)
+        res_hist = client.get("/pedidos?tipo=historico", headers={"Authorization": f"Bearer {token_garcom}"})
+        assert res_hist.status_code == 200
+        assert len(res_hist.json()) == 0
 
     finally:
         app_module.app.dependency_overrides.clear()
+

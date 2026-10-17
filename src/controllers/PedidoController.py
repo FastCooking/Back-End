@@ -261,10 +261,81 @@ def registrar_pagamento(
     }
 
 
+@router.get("")
+def listar_pedidos(
+    idRestaurante: uuid.UUID | None = None,
+    status: str | None = None,
+    tipo: str | None = None,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm", "Garcom")),
+) -> list[dict]:
+    """Lista pedidos do restaurante com filtros de status ou tipo (ativos/historico)."""
+    rest_id = usuario.idRestaurante if usuario.funcao != "Adm" else (idRestaurante or usuario.idRestaurante)
+
+    query = db.query(Pedido).join(Mesa, Pedido.idMesa == Mesa.idMesa).outerjoin(Usuario, Pedido.idGarcom == Usuario.idUsuario)
+    if rest_id:
+        query = query.filter(Pedido.idRestaurante == rest_id)
+    if status:
+        query = query.filter(Pedido.status == status)
+    elif tipo == "ativos":
+        query = query.filter(Pedido.status.notin_(["Fechado", "Cancelado"]))
+    elif tipo == "historico":
+        query = query.filter(Pedido.status.in_(["Fechado", "Cancelado"]))
+
+    pedidos = query.order_by(Pedido.dataAbertura.desc()).all()
+    resultado = []
+
+    for pedido in pedidos:
+        itens_res = []
+        total = 0.0
+        for it in pedido.itens:
+            subtotal = float(it.precoUnitario) * it.quantidade
+            if it.status != "Cancelado":
+                total += subtotal
+            nome_item = it.cardapio.nome if it.cardapio else "Item do cardápio"
+            itens_res.append({
+                "idItemPedido": str(it.idItemPedido),
+                "idCardapio": str(it.idCardapio),
+                "nome": nome_item,
+                "quantidade": it.quantidade,
+                "precoUnitario": float(it.precoUnitario),
+                "subtotal": round(subtotal, 2),
+                "observacao": it.observacao,
+                "status": it.status,
+                "categoria": it.categoria,
+            })
+
+        pagamentos_res = []
+        for p in pedido.pagamentos:
+            pagamentos_res.append({
+                "idPagamento": str(p.idPagamento),
+                "formaPagamento": p.formaPagamento,
+                "valor": float(p.valor),
+                "dataPagamento": p.dataPagamento.isoformat() if p.dataPagamento else None,
+            })
+
+        resultado.append({
+            "idPedido": str(pedido.idPedido),
+            "idRestaurante": str(pedido.idRestaurante),
+            "idMesa": str(pedido.idMesa),
+            "numeroMesa": pedido.mesa.numero if pedido.mesa else None,
+            "idGarcom": str(pedido.idGarcom) if pedido.idGarcom else None,
+            "nomeGarcom": pedido.garcom.nome if pedido.garcom else None,
+            "status": pedido.status,
+            "dataAbertura": pedido.dataAbertura.isoformat() if pedido.dataAbertura else None,
+            "dataFechamento": pedido.dataFechamento.isoformat() if pedido.dataFechamento else None,
+            "total": round(total, 2),
+            "itens": itens_res,
+            "pagamentos": pagamentos_res,
+        })
+
+    return resultado
+
+
 @router.get("/kds/fila")
 def obter_fila(
     db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Cozinheiro", "Garcom")),
+    usuario: Usuario = Depends(exigir_funcao("Cozinheiro", "Garcom", "Gerente", "Adm")),
 ) -> dict:
     return PedidoService(db).queue_snapshot(usuario)
 
