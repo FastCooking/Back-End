@@ -87,8 +87,14 @@ app.include_router(pedido_router)
 from fastapi.staticfiles import StaticFiles
 
 uploads_dir = Path(__file__).resolve().parents[1] / "uploads"
-os.makedirs(uploads_dir / "cardapio", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
+try:
+    os.makedirs(uploads_dir / "cardapio", exist_ok=True)
+except OSError:
+    uploads_dir = Path("/tmp/uploads")
+    os.makedirs(uploads_dir / "cardapio", exist_ok=True)
+
+if uploads_dir.exists():
+    app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 
 @app.get("/", tags=["Health Check"])

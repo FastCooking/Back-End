@@ -47,7 +47,11 @@ class CardapioService:
 
             filename = f"cardapio_{uuid.uuid4().hex[:12]}.jpg"
             uploads_dir = Path(__file__).resolve().parents[2] / "uploads" / "cardapio"
-            os.makedirs(uploads_dir, exist_ok=True)
+            try:
+                os.makedirs(uploads_dir, exist_ok=True)
+            except OSError:
+                uploads_dir = Path("/tmp/uploads/cardapio")
+                os.makedirs(uploads_dir, exist_ok=True)
 
             caminho_absoluto = uploads_dir / filename
             img_comprimida.save(caminho_absoluto, "JPEG", quality=85)
