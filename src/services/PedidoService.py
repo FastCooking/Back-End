@@ -1,16 +1,18 @@
+import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
-import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from src.core.events import domain_event_bus
 from src.core.realtime import realtime_hub
 from src.models.Cardapio import Cardapio
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
 from src.models.Usuario import Usuario
+from src.schemas.KdsNotificationSchema import OrderItemReadyEvent
 from src.schemas.PedidoSchema import PedidoCreate, PedidoItemCreate
 from src.services.PrioridadeKDS import calcular_pontuacao, eh_sobremesa
 
@@ -461,6 +463,10 @@ class PedidoService:
 
     async def publish_events(self, events: Iterable[dict]) -> None:
         for event in events:
+            domain_event = event.get("domainEvent")
+            if domain_event is not None:
+                await domain_event_bus.publish(domain_event)
+
             await realtime_hub.publish_item_event(
                 event_type=event["type"],
                 restaurant_id=event["restaurantId"],
@@ -583,9 +589,30 @@ class PedidoService:
         pedido: Pedido,
         item: ItemPedido,
     ) -> dict:
+        item_payload = cls._item_data(item)
+        domain_event: OrderItemReadyEvent | None = None
+
+        if event_type == "item.status_changed" and item.status == "Pronto":
+            table_num = (
+                item_payload.get("numeroMesa")
+                if item_payload.get("numeroMesa") is not None
+                else (pedido.mesa.numero if pedido.mesa else str(pedido.idMesa))
+            )
+            domain_event = OrderItemReadyEvent(
+                restaurant_id=pedido.idRestaurante,
+                order_id=pedido.idPedido,
+                table_number=table_num,
+                item_id=item.idItemPedido,
+                item_name=item_payload.get("nomeItem") or "Item do Cardápio",
+                quantity=item.quantidade,
+                notes=item.observacao or "",
+                assigned_waiter_id=pedido.idGarcom,
+            )
+
         return {
             "type": event_type,
             "restaurantId": pedido.idRestaurante,
             "assignedWaiterId": pedido.idGarcom,
-            "item": cls._item_data(item),
+            "item": item_payload,
+            "domainEvent": domain_event,
         }

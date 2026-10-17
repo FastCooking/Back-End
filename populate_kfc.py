@@ -1,15 +1,18 @@
 import uuid
-from datetime import datetime, UTC, timedelta
+from datetime import datetime
+
+import bcrypt
+
 from src.database.connection import SessionLocal
-from src.models.Restaurante import Restaurante
-from src.models.Usuario import Usuario
-from src.models.Mesa import Mesa
 from src.models.Cardapio import Cardapio
 from src.models.Estoque import Estoque
-from src.models.Sessao import Sessao
-from src.models.Pedido import Pedido
 from src.models.ItemPedido import ItemPedido
-import bcrypt
+from src.models.Mesa import Mesa
+from src.models.Pedido import Pedido
+from src.models.Restaurante import Restaurante
+from src.models.Sessao import Sessao
+from src.models.Usuario import Usuario
+
 
 def hash_senha(senha: str) -> str:
     salt = bcrypt.gensalt()
@@ -319,7 +322,7 @@ def popular_kfc():
     except Exception as e:
         db.rollback()
         print(f"ERRO ao popular banco: {e}")
-        raise e
+        raise
     finally:
         db.close()
 

@@ -104,12 +104,14 @@ def obter_usuario_por_id(
     usuario_alvo = service.get_by_id(idUsuario)
 
     # Adm e o próprio usuário podem ver tudo. Gerente só vê usuários do seu restaurante.
-    if usuario_logado.funcao == "Gerente":
-        if usuario_alvo.idRestaurante != usuario_logado.idRestaurante:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Você não tem permissão para visualizar usuários de outro restaurante.",
-            )
+    if (
+        usuario_logado.funcao == "Gerente"
+        and usuario_alvo.idRestaurante != usuario_logado.idRestaurante
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você não tem permissão para visualizar usuários de outro restaurante.",
+        )
 
     return usuario_alvo
 

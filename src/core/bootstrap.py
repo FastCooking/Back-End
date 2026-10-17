@@ -1,6 +1,8 @@
 import logging
 import os
+
 from sqlalchemy.orm import Session
+
 from src.database.connection import SessionLocal
 from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario

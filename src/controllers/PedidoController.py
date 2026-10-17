@@ -1,5 +1,7 @@
 import asyncio
+import json
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
 from fastapi import status as http_status
@@ -9,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.core.realtime import realtime_hub
-from src.core.security import exigir_funcao, get_user_from_token
+from src.core.security import decodificar_token, exigir_funcao, get_user_from_token
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
@@ -32,7 +34,7 @@ def get_optional_user(
         return None
     try:
         return get_user_from_token(credenciais.credentials, db)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -120,7 +122,7 @@ async def handle_tracking_websocket(
                 pass
     except WebSocketDisconnect:
         pass
-    except Exception:
+    except Exception:  # noqa: BLE001
         await websocket.close(code=1011)
     finally:
         await realtime_hub.disconnect_tracking(websocket)
@@ -170,11 +172,12 @@ def cancelar_item(
 
 
 from pydantic import BaseModel
-from src.models.Pagamento import Pagamento
+
 from src.models.Mesa import Mesa
-from src.models.Sessao import Sessao
+from src.models.Pagamento import Pagamento
 from src.models.Pedido import Pedido
-from datetime import datetime
+from src.models.Sessao import Sessao
+
 
 class PagamentoCreateRequest(BaseModel):
     formaPagamento: str
@@ -411,3 +414,165 @@ async def pedidos_websocket(
 
     finally:
         await realtime_hub.disconnect(websocket)
+
+
+def _extract_handshake_credentials(websocket: WebSocket) -> tuple[str | None, str | None]:
+    """Extrai token JWT e shiftStatus dos headers ou query params do handshake WebSocket."""
+    auth_header = websocket.headers.get("authorization", "")
+    token: str | None = None
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+    elif websocket.query_params.get("token"):
+        token = websocket.query_params.get("token")
+
+    shift_override = (
+        websocket.headers.get("x-shift-status")
+        or websocket.query_params.get("shiftStatus")
+        or websocket.query_params.get("shift")
+    )
+    return token, shift_override
+
+
+@router.websocket("/ws/waiters")
+@router.websocket("/ws/garcons")
+async def waiters_room_websocket(
+    websocket: WebSocket,
+    db: Session = Depends(get_db),
+) -> None:
+    await handle_waiter_room_websocket(websocket, db)
+
+
+async def handle_waiter_room_websocket(
+    websocket: WebSocket,
+    db: Session,
+) -> None:
+    """
+    Gateway WebSocket dedicado para a sala de garçons em serviço (`room:waiters:active`).
+    Suporta autenticação no handshake (Header Authorization / Query ?token=) ou no 1º frame JSON,
+    valida role WAITER/Garcom e status ON_SHIFT, e executa heartbeat Ping-Pong.
+    """
+    await websocket.accept()
+
+    try:
+        token, shift_override = _extract_handshake_credentials(websocket)
+
+        if not token:
+            auth_message = await asyncio.wait_for(
+                websocket.receive_json(),
+                timeout=5.0,
+            )
+            if isinstance(auth_message, dict) and auth_message.get("type") == "authenticate":
+                token = auth_message.get("token")
+                if not shift_override:
+                    shift_override = (
+                        auth_message.get("shiftStatus")
+                        or auth_message.get("shift_status")
+                    )
+
+        if not isinstance(token, str) or not token.strip():
+            await websocket.close(code=4401)
+            return
+
+        try:
+            claims = decodificar_token(token)
+            usuario = get_user_from_token(token, db)
+        except HTTPException:
+            await websocket.close(code=4401)
+            return
+
+        effective_role = claims.get("funcao") or usuario.funcao
+        effective_shift = (
+            shift_override
+            or claims.get("shift_status")
+            or ("ON_SHIFT" if usuario.status else "OFF_SHIFT")
+        ).strip().upper()
+
+        if effective_role not in ("Garcom", "WAITER") or effective_shift != "ON_SHIFT":
+            await websocket.close(code=4403)
+            return
+
+        await realtime_hub.join_waiters_room(
+            websocket=websocket,
+            restaurant_id=usuario.idRestaurante,
+            user_id=usuario.idUsuario,
+            role=effective_role,
+            shift_status=effective_shift,
+        )
+
+        while True:
+            try:
+                raw_msg = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=25.0,
+                )
+                await realtime_hub.record_heartbeat(websocket)
+
+                if raw_msg.strip().lower() == "ping":
+                    await websocket.send_text("pong")
+                    continue
+
+                try:
+                    parsed = json.loads(raw_msg)
+                except ValueError:
+                    continue
+
+                if not isinstance(parsed, dict):
+                    continue
+
+                msg_type = parsed.get("type")
+                if msg_type == "ping":
+                    await websocket.send_json(
+                        {
+                            "type": "pong",
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    )
+                elif msg_type in ("shift:update", "shift:end"):
+                    new_shift = (
+                        "OFF_SHIFT"
+                        if msg_type == "shift:end"
+                        else str(parsed.get("shiftStatus", "OFF_SHIFT")).upper()
+                    )
+                    still_active = await realtime_hub.update_waiter_shift(
+                        websocket, new_shift
+                    )
+                    if not still_active:
+                        await websocket.send_json(
+                            {
+                                "type": "room.left",
+                                "room": "room:waiters:active",
+                                "reason": "shift_ended",
+                                "timestamp": datetime.now(UTC).isoformat(),
+                            }
+                        )
+                        await websocket.close(code=4403)
+                        return
+
+            except TimeoutError:
+                try:
+                    await asyncio.wait_for(
+                        websocket.send_json(
+                            {
+                                "type": "ping",
+                                "timestamp": datetime.now(UTC).isoformat(),
+                            }
+                        ),
+                        timeout=realtime_hub.send_timeout,
+                    )
+                except Exception:  # noqa: BLE001
+                    break
+
+    except (TimeoutError, ValueError):
+        await websocket.close(code=4401)
+
+    except PermissionError:
+        await websocket.close(code=4403)
+
+    except WebSocketDisconnect:
+        pass
+
+    except (OSError, RuntimeError, SQLAlchemyError):
+        await websocket.close(code=1011)
+
+    finally:
+        await realtime_hub.leave_waiters_room(websocket, reason="connection_closed")
