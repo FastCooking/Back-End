@@ -13,7 +13,7 @@ class QrCodeService:
     def __init__(self, db: Session):
         self.db = db
 
-    def gerar_qrcode(self, idMesa: uuid.UUID | str) -> BytesIO:
+    def gerar_qrcode(self, idMesa: uuid.UUID | str, origin: str | None = None) -> BytesIO:
         mesa = Mesa.get_by_id(self.db, idMesa)
 
         if mesa is None:
@@ -22,12 +22,15 @@ class QrCodeService:
                 detail=f"Mesa com ID {idMesa} não encontrada.",
             )
 
-        base_url = os.getenv(
-            "FRONTEND_BASE_URL",
-            "http://localhost:5173",
+        base_url = (
+            origin
+            or os.getenv(
+                "FRONTEND_BASE_URL",
+                "https://fastcooking-front-end.vercel.app",
+            )
         ).rstrip("/")
 
-        url = f"{base_url}/autoatendimento/mesa/{mesa.idMesa}"
+        url = f"{base_url}/cardapio?idMesa={mesa.idMesa}&idRestaurante={mesa.idRestaurante}&mesa={mesa.numero}"
 
         imagem = qrcode.make(url)
         arquivo = BytesIO()

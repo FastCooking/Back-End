@@ -142,10 +142,11 @@ def excluir_mesa(
 )
 def gerar_qrcode_mesa(
     idMesa: UUID,
+    origin: str | None = None,
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
-    arquivo = QrCodeService(db).gerar_qrcode(idMesa)
+    arquivo = QrCodeService(db).gerar_qrcode(idMesa, origin=origin)
 
     return StreamingResponse(
         arquivo,
@@ -171,6 +172,7 @@ def abrir_mesa(
         "status": sessao.status,
         "idRestaurante": str(mesa.idRestaurante) if mesa else None,
         "numero": mesa.numero if mesa else None,
+        "nomeRestaurante": mesa.restaurante.nome if (mesa and mesa.restaurante) else None,
         "idPedidoAtivo": str(pedido_ativo.idPedido) if pedido_ativo else None,
     }
 

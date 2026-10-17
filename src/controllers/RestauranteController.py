@@ -98,6 +98,26 @@ def obter_restaurante_por_id(
     return service.get_by_id(idRestaurante)
 
 
+@router.get(
+    "/{idRestaurante}/publico",
+    status_code=status.HTTP_200_OK,
+    summary="Obter informações públicas do restaurante",
+    description="Retorna dados públicos do restaurante (nome, telefone, status) para o cardápio e autoatendimento.",
+)
+def obter_restaurante_publico(
+    idRestaurante: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    service = RestauranteService(db)
+    rest = service.get_by_id(idRestaurante)
+    return {
+        "idRestaurante": str(rest.idRestaurante),
+        "nome": rest.nome,
+        "telefone": rest.telefone,
+        "status": rest.status,
+    }
+
+
 @router.put(
     "/{idRestaurante}",
     response_model=RestauranteResponse,
