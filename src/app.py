@@ -112,6 +112,15 @@ async def root_tracking_websocket(
     await handle_tracking_websocket(websocket, idPedido, db)
 
 
+@app.websocket("/ws/waiters")
+async def root_waiters_websocket(
+    websocket: WebSocket,
+    db: Session = Depends(get_db),
+):
+    from src.controllers.PedidoController import handle_waiter_room_websocket
+    await handle_waiter_room_websocket(websocket, db)
+
+
 def getVarsEnv():
     """
     Carrega todas as variáveis de ambiente foram carregadas.
