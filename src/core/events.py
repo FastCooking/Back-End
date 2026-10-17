@@ -1,8 +1,8 @@
 import asyncio
-from collections import defaultdict
-from collections.abc import Awaitable, Callable
 import logging
 import time
+from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
 from src.schemas.KdsNotificationSchema import OrderItemReadyEvent
@@ -81,13 +81,11 @@ class DomainEventBus:
     async def _invoke_handler(handler: AsyncEventHandler, event: Any) -> Any:
         try:
             return await handler(event)
-        except Exception as exc:
-            logger.error(
-                "[EVENT_BUS_ERROR] Falha isolada no listener '%s' ao processar '%s': %s",
+        except Exception:
+            logger.exception(
+                "[EVENT_BUS_ERROR] Falha isolada no listener '%s' ao processar '%s'",
                 getattr(handler, "__qualname__", str(handler)),
                 type(event).__name__,
-                exc,
-                exc_info=True,
             )
             return None
 

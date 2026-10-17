@@ -16,13 +16,14 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import uuid
+from contextlib import asynccontextmanager
+
 from sqlalchemy.orm import Session
 
 from src.controllers.AuthController import router as auth_router
 from src.controllers.CardapioController import router as cardapio_router
 from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
-from contextlib import asynccontextmanager
 from src.controllers.MesaController import router as mesa_router
 from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI):
     # Executa o bootstrap de deploy de forma segura e idempotente
     try:
         garantir_usuario_admin()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"[BOOTSTRAP] Aviso/Erro ao verificar usuário padrão: {exc}")
     yield
 

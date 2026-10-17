@@ -1,4 +1,3 @@
-import uuid
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -146,6 +145,7 @@ def test_cliente_pode_criar_pedido_e_comanda_compartilhada(pedido_env):
         res_add = client.post(f"/pedidos/{id_pedido_1}/itens", json=payload_add)
         assert res_add.status_code == 201
         res_get2 = client.get(f"/pedidos/{id_pedido_1}")
+        assert res_get2.status_code == 200
         # 5. Lista pedidos por GET /pedidos (com token de Garcom ou Gerente)
         token_garcom = security.criar_token(
             pedido_env["garcom"].idUsuario, "Garcom", pedido_env["idRestaurante"]

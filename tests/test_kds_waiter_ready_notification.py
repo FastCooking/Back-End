@@ -1,7 +1,7 @@
 import asyncio
-from contextlib import ExitStack
 import time
 import uuid
+from contextlib import ExitStack
 
 import pytest
 from fastapi import WebSocketDisconnect

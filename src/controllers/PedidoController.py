@@ -1,7 +1,7 @@
 import asyncio
-from datetime import UTC, datetime
 import json
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
 from fastapi import status as http_status
@@ -34,7 +34,7 @@ def get_optional_user(
         return None
     try:
         return get_user_from_token(credenciais.credentials, db)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -122,7 +122,7 @@ async def handle_tracking_websocket(
                 pass
     except WebSocketDisconnect:
         pass
-    except Exception:
+    except Exception:  # noqa: BLE001
         await websocket.close(code=1011)
     finally:
         await realtime_hub.disconnect_tracking(websocket)
@@ -172,11 +172,12 @@ def cancelar_item(
 
 
 from pydantic import BaseModel
-from src.models.Pagamento import Pagamento
+
 from src.models.Mesa import Mesa
-from src.models.Sessao import Sessao
+from src.models.Pagamento import Pagamento
 from src.models.Pedido import Pedido
-from datetime import datetime
+from src.models.Sessao import Sessao
+
 
 class PagamentoCreateRequest(BaseModel):
     formaPagamento: str
@@ -558,7 +559,7 @@ async def handle_waiter_room_websocket(
                         ),
                         timeout=realtime_hub.send_timeout,
                     )
-                except Exception:
+                except Exception:  # noqa: BLE001
                     break
 
     except (TimeoutError, ValueError):

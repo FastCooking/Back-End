@@ -1,9 +1,9 @@
 import asyncio
+import logging
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-import logging
-import time
 from uuid import UUID, uuid4
 
 from fastapi import WebSocket
@@ -301,7 +301,7 @@ class RealtimeHub:
             WebSocketDisconnect,
             OSError,
             RuntimeError,
-            Exception,
+            Exception,  # noqa: BLE001
         ) as exc:
             logger.warning(
                 "[WS_DEAD_SOCKET_EVICTED] Garçom=%s sala=%s descartado por falha/timeout no envio: %s",
@@ -611,7 +611,7 @@ class RealtimeHub:
             RuntimeError,
             TimeoutError,
             WebSocketDisconnect,
-            Exception,
+            Exception,  # noqa: BLE001
         ):
             return subscription
 
@@ -633,7 +633,7 @@ class RealtimeHub:
             RuntimeError,
             TimeoutError,
             WebSocketDisconnect,
-            Exception,
+            Exception,  # noqa: BLE001
         ):
             return subscription
 

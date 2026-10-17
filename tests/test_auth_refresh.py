@@ -1,5 +1,5 @@
-import uuid
 import pytest
+
 from src.core.security import criar_refresh_token, criar_token
 from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario

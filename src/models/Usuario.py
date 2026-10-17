@@ -4,7 +4,16 @@ from datetime import datetime
 from typing import Optional
 
 import bcrypt
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func, text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 

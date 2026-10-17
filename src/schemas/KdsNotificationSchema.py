@@ -1,8 +1,8 @@
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
-import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 

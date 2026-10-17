@@ -1,10 +1,10 @@
 import io
 import os
-from pathlib import Path
 import uuid
-from PIL import Image
+from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from src.models.Cardapio import Cardapio
@@ -74,7 +74,7 @@ class CardapioService:
             caminho_arquivo = uploads_dir / relative_path
             if os.path.exists(caminho_arquivo):
                 os.remove(caminho_arquivo)
-        except Exception as err:
+        except OSError as err:
             print(f"[AVISO] Não foi possível remover foto antiga: {err}")
 
     def criar(
