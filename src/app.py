@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from src.controllers.AuthController import router as auth_router
 from src.controllers.CardapioController import router as cardapio_router
+from src.controllers.DeliveryController import router as delivery_router
 from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
 from src.controllers.MesaController import router as mesa_router
@@ -30,6 +31,7 @@ from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
 from src.core.bootstrap import garantir_usuario_admin
 from src.database.connection import get_db, test_connection
+from src.services.DeliveryService import DeliveryDomainError
 
 
 @asynccontextmanager
@@ -58,6 +60,20 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(DeliveryDomainError)
+async def delivery_domain_exception_handler(request: Request, exc: DeliveryDomainError):
+    """Retorna payload semântico estruturado com código amigável para erros de domínio de entrega."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "code": exc.code,
+            "error": exc.code,
+            "message": exc.message,
+            "detail": f"{exc.code}: {exc.message}",
+        },
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Trata erros de validação: retorna 400 para campos obrigatórios ausentes e 422 para dados inválidos."""
@@ -84,6 +100,7 @@ app.include_router(estoque_router)
 app.include_router(ficha_tecnica_router)
 app.include_router(mesa_router)
 app.include_router(pedido_router)
+app.include_router(delivery_router)
 
 from fastapi.staticfiles import StaticFiles
 

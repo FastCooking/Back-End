@@ -54,10 +54,34 @@ class ItemPedido(Base):
         nullable=False,
         default=True,
     )
+    deliveryStatus: str | None = Column(
+        String(40),
+        nullable=True,
+        default=None,
+    )
+    claimedByWaiterId: uuid.UUID | None = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Usuarios.idUsuario", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
+    claimedAt: datetime | None = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    deliveredAt: datetime | None = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # Relacionamentos
     pedido = relationship("Pedido", back_populates="itens")
     cardapio = relationship("Cardapio", back_populates="itens_pedido")
+    entrega = relationship(
+        "Entrega",
+        back_populates="item_pedido",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<ItemPedido(id={self.idItemPedido}, pedido={self.idPedido}, cardapio={self.idCardapio}, status='{self.status}')>"

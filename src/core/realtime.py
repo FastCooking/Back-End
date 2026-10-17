@@ -10,6 +10,7 @@ from fastapi import WebSocket
 from fastapi.websockets import WebSocketDisconnect
 
 from src.core.events import domain_event_bus
+from src.schemas.DeliverySchema import DeliveryClaimedEvent
 from src.schemas.KdsNotificationSchema import OrderItemReadyEvent, ShiftStatus
 
 logger = logging.getLogger("fastcooking.realtime")
@@ -269,6 +270,76 @@ class RealtimeHub:
             payload["tableNumber"],
             delivered_count,
             len(dead_subs),
+            elapsed_ms,
+        )
+
+        return {
+            "eventId": payload["eventId"],
+            "room": room_key,
+            "deliveredCount": delivered_count,
+            "failedCount": len(dead_subs),
+            "elapsedMs": round(elapsed_ms, 3),
+        }
+
+    async def broadcast_delivery_claimed(self, event: DeliveryClaimedEvent) -> dict:
+        """
+        Listener de domínio para DeliveryClaimedEvent.
+        Emite o evento 'delivery:claimed' para a sala room:waiters:active:<idRestaurante>,
+        garantindo que os demais garçons removam imediatamente o card/botão de ação da UI.
+        """
+        started_at = time.perf_counter()
+        payload = event.to_payload().model_dump(mode="json")
+        room_key = self.waiter_room_name(event.restaurant_id)
+
+        async with self._lock:
+            active_subscribers = [
+                sub
+                for sub in tuple(self._waiter_rooms.get(room_key, ()))
+                if sub.shift_status == ShiftStatus.ON_SHIFT.value
+                and sub.role in ALLOWED_WAITER_ROLES
+            ]
+
+        if not active_subscribers:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+            logger.info(
+                "[DELIVERY_CLAIMED_BROADCAST] eventId=%s item=%s sala=%s sem garçons conectados (%.2fms)",
+                payload["eventId"],
+                payload["itemId"],
+                room_key,
+                elapsed_ms,
+            )
+            return {
+                "eventId": payload["eventId"],
+                "room": room_key,
+                "deliveredCount": 0,
+                "failedCount": 0,
+                "elapsedMs": round(elapsed_ms, 3),
+            }
+
+        delivery_tasks = [
+            self._send_waiter_ready_payload(sub, payload)
+            for sub in active_subscribers
+        ]
+        failed_subscriptions = await asyncio.gather(*delivery_tasks)
+
+        dead_subs = [sub for sub in failed_subscriptions if sub is not None]
+        if dead_subs:
+            async with self._lock:
+                room_members = self._waiter_rooms.get(room_key)
+                if room_members is not None:
+                    room_members.difference_update(dead_subs)
+                    if not room_members:
+                        self._waiter_rooms.pop(room_key, None)
+
+        delivered_count = len(active_subscribers) - len(dead_subs)
+        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+
+        logger.info(
+            "[DELIVERY_CLAIMED_BROADCAST] eventId=%s item=%s garcom=%s entregues=%d latencia=%.2fms",
+            payload["eventId"],
+            payload["itemId"],
+            payload["claimedByWaiterId"],
+            delivered_count,
             elapsed_ms,
         )
 
@@ -658,3 +729,4 @@ class RealtimeHub:
 
 realtime_hub = RealtimeHub()
 domain_event_bus.subscribe(OrderItemReadyEvent, realtime_hub.broadcast_item_ready)
+domain_event_bus.subscribe(DeliveryClaimedEvent, realtime_hub.broadcast_delivery_claimed)
