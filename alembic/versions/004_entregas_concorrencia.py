@@ -1,6 +1,6 @@
 """Cria tabela Entrega e colunas de controle transacional de entregas no ItemPedido.
 
-Revision ID: 004_controle_entregas_concorrencia
+Revision ID: 004_entregas_concorrencia
 Revises: 003_prioridade_dinamica_kds
 """
 
@@ -9,7 +9,7 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "004_controle_entregas_concorrencia"
+revision = "004_entregas_concorrencia"
 down_revision = "003_prioridade_dinamica_kds"
 branch_labels = None
 depends_on = None
