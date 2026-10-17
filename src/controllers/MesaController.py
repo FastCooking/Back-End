@@ -35,7 +35,19 @@ def listar_mesas(
 ):
     SessaoService.expirar_sessoes_inativas(db, limite_minutos=10)
     mesas = Mesa.get_all_by_restaurant(db, idRestaurante, status)
-    return mesas
+    resultado = []
+    for m in mesas:
+        ped = Pedido.get_active_for_table(db, m.idMesa)
+        resultado.append(
+            MesaResponse(
+                idMesa=m.idMesa,
+                idRestaurante=m.idRestaurante,
+                numero=m.numero,
+                status=m.status,
+                idPedidoAtivo=ped.idPedido if ped else None,
+            )
+        )
+    return resultado
 
 
 @router.post(
@@ -294,4 +306,15 @@ def obter_pedido_ativo_mesa(
             detail="Nenhum pedido ativo encontrado para esta mesa.",
         )
 
-    return PedidoService(db).get_order(pedido.idPedido)
+    detalhes = PedidoService(db).get_order(pedido.idPedido)
+    pedido_data = detalhes.get("pedido", {})
+    return {
+        **detalhes,
+        **pedido_data,
+        "idPedido": pedido.idPedido,
+        "status": pedido.status,
+        "idMesa": pedido.idMesa,
+        "sessao_id": pedido.sessao_id,
+        "idRestaurante": pedido.idRestaurante,
+        "itens": detalhes.get("itens", []),
+    }
