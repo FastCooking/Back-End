@@ -25,6 +25,7 @@ Base = declarative_base()
 
 # Importa os modelos para registrar as tabelas no metadata do SQLAlchemy.
 from src.models.Cardapio import Cardapio  # noqa: F401
+from src.models.Entrega import Entrega  # noqa: F401
 from src.models.Estoque import Estoque  # noqa: F401
 from src.models.FichaTecnica import FichaTecnica  # noqa: F401
 from src.models.ItemPedido import ItemPedido  # noqa: F401

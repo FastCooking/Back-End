@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 from src.core.events import domain_event_bus
 from src.core.realtime import realtime_hub
 from src.models.Cardapio import Cardapio
+from src.models.Entrega import Entrega
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
 from src.models.Usuario import Usuario
+from src.schemas.DeliverySchema import DeliveryState
 from src.schemas.KdsNotificationSchema import OrderItemReadyEvent
 from src.schemas.PedidoSchema import PedidoCreate, PedidoItemCreate
 from src.services.PrioridadeKDS import calcular_pontuacao, eh_sobremesa
@@ -282,6 +284,36 @@ class PedidoService:
 
         try:
             item.update_stats(self.db, novo_status, commit=False)
+            if novo_status == "Pronto":
+                item.deliveryStatus = DeliveryState.WAITING_DELIVERY_PICKUP.value
+                existing_entrega = (
+                    self.db.query(Entrega)
+                    .filter(Entrega.idItemPedido == item.idItemPedido)
+                    .first()
+                )
+                if existing_entrega is None:
+                    self.db.add(
+                        Entrega(
+                            idRestaurante=pedido.idRestaurante,
+                            idPedido=pedido.idPedido,
+                            idItemPedido=item.idItemPedido,
+                            status=DeliveryState.WAITING_DELIVERY_PICKUP.value,
+                            dataCriacao=item.dataCriacao or datetime.now(UTC),
+                        )
+                    )
+            elif novo_status == "Entregue":
+                now_utc = datetime.now(UTC)
+                item.deliveryStatus = DeliveryState.DELIVERED.value
+                item.deliveredAt = now_utc
+                existing_entrega = (
+                    self.db.query(Entrega)
+                    .filter(Entrega.idItemPedido == item.idItemPedido)
+                    .first()
+                )
+                if existing_entrega is not None:
+                    existing_entrega.status = DeliveryState.DELIVERED.value
+                    existing_entrega.deliveredAt = now_utc
+
             self.db.commit()
             self.db.refresh(item)
             self.db.refresh(pedido)
