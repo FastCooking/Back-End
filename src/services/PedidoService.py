@@ -214,6 +214,8 @@ class PedidoService:
             "type": "ORDER_UPDATE",
             "order": {
                 "id": str(pedido.idPedido),
+                "idMesa": str(pedido.idMesa) if getattr(pedido, "idMesa", None) else None,
+                "idRestaurante": str(pedido.idRestaurante) if getattr(pedido, "idRestaurante", None) else None,
                 "customerName": f"Mesa {table_number}" if table_number else "Cliente",
                 "tableNumber": table_number,
                 "status": overall_status,
