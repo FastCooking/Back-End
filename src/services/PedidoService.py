@@ -164,9 +164,29 @@ class PedidoService:
             .order_by(ItemPedido.dataCriacao.asc())
             .all()
         )
+        total = sum(
+            float(it.precoUnitario) * it.quantidade
+            for it in itens
+            if it.status != "Cancelado"
+        )
+        pagamentos = [
+            {
+                "idPagamento": str(p.idPagamento),
+                "formaPagamento": p.formaPagamento,
+                "valor": float(p.valor),
+                "dataPagamento": p.dataPagamento.isoformat() if p.dataPagamento else None,
+            }
+            for p in (pedido.pagamentos or [])
+        ]
+        total_pago = sum(p["valor"] for p in pagamentos)
+        saldo_restante = max(0.0, round(total - total_pago, 2))
         return {
             "pedido": self._pedido_data(pedido),
             "itens": [self._item_data(item) for item in itens],
+            "total": round(total, 2),
+            "pagamentos": pagamentos,
+            "totalPago": round(total_pago, 2),
+            "saldoRestante": saldo_restante,
         }
 
     def get_order_tracking(self, idPedido: uuid.UUID) -> dict:
@@ -307,6 +327,8 @@ class PedidoService:
                 now_utc = datetime.now(UTC)
                 item.deliveryStatus = DeliveryState.DELIVERED.value
                 item.deliveredAt = now_utc
+                if usuario and getattr(usuario, "idUsuario", None):
+                    item.claimedByWaiterId = usuario.idUsuario
                 existing_entrega = (
                     self.db.query(Entrega)
                     .filter(Entrega.idItemPedido == item.idItemPedido)
@@ -328,6 +350,67 @@ class PedidoService:
             "item": self._item_data(item),
             "event": self._event_data(
                 "item.status_changed", pedido, item
+            ),
+        }
+
+    def update_item_quantity(
+        self,
+        idItemPedido: uuid.UUID,
+        nova_quantidade: int,
+        usuario: Usuario,
+    ) -> dict:
+        item = (
+            self.db.query(ItemPedido)
+            .filter(ItemPedido.idItemPedido == idItemPedido)
+            .with_for_update()
+            .first()
+        )
+
+        if item is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        pedido = Pedido.get_by_id(self.db, item.idPedido)
+
+        if pedido is None or (usuario.funcao != "Adm" and pedido.idRestaurante != usuario.idRestaurante):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        if pedido.status in ("Fechado", "Cancelado"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível alterar item de um pedido encerrado ou cancelado.",
+            )
+
+        if item.status != "Pendente":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Não é possível alterar a quantidade do item pois o preparo já foi iniciado (status atual: '{item.status}').",
+            )
+
+        try:
+            if nova_quantidade <= 0:
+                item.update_stats(self.db, "Cancelado", commit=False)
+            else:
+                item.quantidade = nova_quantidade
+
+            self.db.commit()
+            self.db.refresh(item)
+            self.db.refresh(pedido)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return {
+            "item": self._item_data(item),
+            "event": self._event_data(
+                "item.quantity_changed" if nova_quantidade > 0 else "item.status_changed",
+                pedido,
+                item,
             ),
         }
 
@@ -614,6 +697,8 @@ class PedidoService:
             "liberadoParaPreparo": item.liberadoParaPreparo,
             "tempoEsperaMinutos": tempo_espera,
             "pontuacao": pontuacao,
+            "claimedByWaiterId": str(item.claimedByWaiterId) if item.claimedByWaiterId else None,
+            "deliveredAt": item.deliveredAt.isoformat() if item.deliveredAt else None,
         }
 
     @classmethod

@@ -56,3 +56,7 @@ class PedidoResponseSchema(BaseModel):
     itens: list[ItemResponseSchema] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ItemPedidoQuantidadeUpdate(BaseModel):
+    quantidade: int = Field(..., ge=0, description="Nova quantidade do item (0 cancela o item)")

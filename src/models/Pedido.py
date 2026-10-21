@@ -39,12 +39,20 @@ class Pedido(Base):
         DateTime, nullable=False, default=datetime.now, server_default=func.now()
     )
     dataFechamento: datetime | None = Column(DateTime, nullable=True)
+    idUsuarioFechamento: uuid.UUID | None = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Usuarios.idUsuario", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # Relacionamentos
     restaurante = relationship("Restaurante", back_populates="pedidos")
     mesa = relationship("Mesa", back_populates="pedidos")
     garcom = relationship(
         "Usuario", back_populates="pedidos_atendidos", foreign_keys=[idGarcom]
+    )
+    usuario_fechamento = relationship(
+        "Usuario", foreign_keys=[idUsuarioFechamento]
     )
     itens = relationship(
         "ItemPedido", back_populates="pedido", cascade="all, delete-orphan"
