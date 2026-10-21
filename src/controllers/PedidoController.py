@@ -15,6 +15,7 @@ from src.core.security import decodificar_token, exigir_funcao, get_user_from_to
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
+    ItemPedidoQuantidadeUpdate,
     ItemPedidoStatusUpdate,
     PedidoCreate,
     PedidoItemCreate,
@@ -142,6 +143,20 @@ def alterar_status_item(
     return result
 
 
+@router.patch("/itens/{idItemPedido}/quantidade")
+def alterar_quantidade_item(
+    idItemPedido: uuid.UUID,
+    dados: ItemPedidoQuantidadeUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    result = service.update_item_quantity(idItemPedido, dados.quantidade, usuario)
+    background_tasks.add_task(service.publish_events, [result.pop("event")])
+    return result
+
+
 @router.patch("/itens/{idItemPedido}/liberar-sobremesa")
 def liberar_sobremesa(
     idItemPedido: uuid.UUID,
@@ -182,6 +197,7 @@ from src.models.Sessao import Sessao
 class PagamentoCreateRequest(BaseModel):
     formaPagamento: str
     valor: float | None = None
+    cancelar_pendentes: bool = False
 
 
 @router.post("/{idPedido}/pagamento", status_code=http_status.HTTP_201_CREATED)
@@ -206,51 +222,115 @@ def registrar_pagamento(
             detail="Este pedido já foi encerrado.",
         )
 
-    # Calcula valor total se não informado
-    valor_total = dados.valor
-    if valor_total is None or valor_total <= 0:
-        dados_pedido = service.get_order(idPedido)
-        valor_total = float(dados_pedido.get("total", 0.0))
+    # 1. Validação de itens: não pode fechar se houver item "Em preparo"
+    itens_em_preparo = [it for it in pedido.itens if it.status == "Em preparo"]
+    if itens_em_preparo:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="Não é possível fechar a mesa com itens em preparo na cozinha. Aguarde a finalização.",
+        )
+
+    # Se houver itens "Pendente", eles são cancelados para realizar o fechamento da mesa
+    itens_pendentes = [it for it in pedido.itens if it.status == "Pendente"]
+    cancel_events = []
+    for it in itens_pendentes:
+        it.update_stats(db, "Cancelado", commit=False)
+        cancel_events.append({
+            "type": "item.cancelled",
+            "idPedido": str(pedido.idPedido),
+            "idItemPedido": str(it.idItemPedido),
+            "nome": it.cardapio.nome if it.cardapio else "Item",
+            "usuario": usuario.nome,
+            "motivo": "Cancelado automaticamente no fechamento da comanda",
+        })
+
+    # Calcula valor total considerando itens não cancelados
+    total_pedido = sum(
+        float(it.precoUnitario) * it.quantidade
+        for it in pedido.itens
+        if it.status != "Cancelado"
+    )
+
+    total_ja_pago = sum(float(p.valor) for p in pedido.pagamentos)
+    saldo_restante_atual = max(0.0, round(total_pedido - total_ja_pago, 2))
+
+    valor_a_pagar = dados.valor
+    if valor_a_pagar is None or valor_a_pagar <= 0:
+        valor_a_pagar = saldo_restante_atual
+    else:
+        valor_a_pagar = round(min(valor_a_pagar, saldo_restante_atual), 2)
+
+    if valor_a_pagar <= 0 and total_pedido > 0:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Não há saldo pendente para pagamento.",
+        )
 
     # Cria pagamento
     pagamento = Pagamento.create(
         db,
         idPedido=idPedido,
         formaPagamento=dados.formaPagamento,
-        valor=valor_total,
+        valor=valor_a_pagar,
     )
 
-    # Fecha o pedido
-    pedido.update_stats(db, "Fechado", commit=False)
-    pedido.dataFechamento = datetime.now()
+    novo_total_pago = round(total_ja_pago + valor_a_pagar, 2)
+    novo_saldo_restante = max(0.0, round(total_pedido - novo_total_pago, 2))
 
-    # Libera a mesa
-    mesa = Mesa.get_by_id(db, pedido.idMesa)
-    if mesa:
-        mesa.update(db, status="Disponivel", commit=False)
+    events_to_publish = list(cancel_events)
+    pedido_encerrado = False
 
-    # Encerra sessão da mesa se existir
-    sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta").all()
-    for s in sessoes_abertas:
-        s.status = "Fechada"
+    if novo_saldo_restante <= 0.01:
+        pedido_encerrado = True
+        pedido.update_stats(db, "Fechado", commit=False)
+        pedido.dataFechamento = datetime.now()
+        pedido.idUsuarioFechamento = usuario.idUsuario
+
+        mesa = Mesa.get_by_id(db, pedido.idMesa)
+        if mesa:
+            mesa.update(db, status="Disponivel", commit=False)
+
+        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta").all()
+        for s in sessoes_abertas:
+            s.status = "Fechada"
+
+        events_to_publish.append({
+            "type": "order.closed",
+            "idPedido": str(idPedido),
+            "idMesa": str(pedido.idMesa),
+            "status": "Fechado",
+            "total": float(total_pedido),
+            "totalPago": float(novo_total_pago),
+            "formaPagamento": dados.formaPagamento,
+        })
+    else:
+        events_to_publish.append({
+            "type": "order.payment_partial",
+            "idPedido": str(idPedido),
+            "idMesa": str(pedido.idMesa),
+            "valor": float(valor_a_pagar),
+            "saldoRestante": float(novo_saldo_restante),
+            "formaPagamento": dados.formaPagamento,
+        })
 
     db.commit()
     db.refresh(pedido)
-    if mesa:
-        db.refresh(mesa)
 
-    event_payload = {
-        "type": "order.closed",
-        "idPedido": str(idPedido),
-        "idMesa": str(pedido.idMesa),
-        "status": "Fechado",
-        "valor": float(valor_total),
-        "formaPagamento": dados.formaPagamento,
-    }
-    background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, event_payload)
+    for ev in events_to_publish:
+        background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, ev)
+
+    mensagem = (
+        f"Pagamento de R$ {valor_a_pagar:.2f} registrado com sucesso. Pedido encerrado e mesa liberada."
+        if pedido_encerrado
+        else f"Pagamento parcial de R$ {valor_a_pagar:.2f} ({dados.formaPagamento}) registrado. Saldo restante: R$ {novo_saldo_restante:.2f}."
+    )
 
     return {
-        "message": f"Pagamento de R$ {valor_total:.2f} registrado com sucesso. Pedido encerrado e mesa liberada.",
+        "message": mensagem,
+        "pedidoEncerrado": pedido_encerrado,
+        "totalPedido": float(total_pedido),
+        "totalPago": float(novo_total_pago),
+        "saldoRestante": float(novo_saldo_restante),
         "pagamento": {
             "idPagamento": str(pagamento.idPagamento),
             "formaPagamento": pagamento.formaPagamento,
@@ -317,6 +397,8 @@ def listar_pedidos(
                 "dataPagamento": p.dataPagamento.isoformat() if p.dataPagamento else None,
             })
 
+        nome_fechamento = pedido.usuario_fechamento.nome if pedido.usuario_fechamento else None
+        funcao_fechamento = pedido.usuario_fechamento.funcao if pedido.usuario_fechamento else None
         resultado.append({
             "idPedido": str(pedido.idPedido),
             "idRestaurante": str(pedido.idRestaurante),
@@ -327,6 +409,9 @@ def listar_pedidos(
             "status": pedido.status,
             "dataAbertura": pedido.dataAbertura.isoformat() if pedido.dataAbertura else None,
             "dataFechamento": pedido.dataFechamento.isoformat() if pedido.dataFechamento else None,
+            "idUsuarioFechamento": str(pedido.idUsuarioFechamento) if pedido.idUsuarioFechamento else None,
+            "nomeUsuarioFechamento": nome_fechamento,
+            "funcaoUsuarioFechamento": funcao_fechamento,
             "total": round(total, 2),
             "itens": itens_res,
             "pagamentos": pagamentos_res,
