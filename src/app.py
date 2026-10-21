@@ -29,7 +29,7 @@ from src.controllers.MesaController import router as mesa_router
 from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
-from src.core.bootstrap import garantir_usuario_admin
+from src.core.bootstrap import garantir_usuario_admin, executar_migracoes_seguras
 from src.database.connection import get_db, test_connection
 from src.services.DeliveryService import DeliveryDomainError
 
@@ -37,6 +37,10 @@ from src.services.DeliveryService import DeliveryDomainError
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Executa o bootstrap de deploy de forma segura e idempotente
+    try:
+        executar_migracoes_seguras()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[BOOTSTRAP] Aviso ao executar migrações: {exc}")
     try:
         garantir_usuario_admin()
     except Exception as exc:  # noqa: BLE001
@@ -89,6 +93,15 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "message": "Erro de validação: campos obrigatórios ausentes ou inválidos.",
             "detail": jsonable_encoder(exc.errors()),
         },
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Garante que erros 500 não quebrem o cabeçalho CORS e retornem mensagem estruturada em JSON."""
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": f"Erro interno do servidor: {str(exc)}"},
     )
 
 
