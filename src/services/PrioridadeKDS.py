@@ -41,15 +41,19 @@ def calcular_pontuacao(
     categoria: str | None,
     data_criacao: datetime,
     agora: datetime | None = None,
+    tempo_preparo: int | None = None,
 ) -> tuple[float, float]:
     """
     Retorna (tempo de espera em minutos, pontuação dinâmica).
     Pontuação maior significa maior prioridade na fila.
+    Se tempo_preparo estiver definido no cardápio (> 0), ele é usado como o tempo limite de preparo.
     """
     regra = REGRAS_CATEGORIA.get(
         normalizar_categoria(categoria),
         REGRA_PADRAO,
     )
+
+    limite = float(tempo_preparo) if tempo_preparo and tempo_preparo > 0 else float(regra["limite"])
 
     agora = agora or datetime.now(UTC)
 
@@ -61,6 +65,6 @@ def calcular_pontuacao(
 
     segundos = max(0.0, (agora - data_criacao).total_seconds())
     espera = segundos / 60.0
-    pontuacao = regra["peso"] * (1 + espera / regra["limite"])
+    pontuacao = regra["peso"] * (1 + espera / limite)
 
     return round(espera, 2), round(pontuacao, 4)

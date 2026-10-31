@@ -251,6 +251,57 @@ def registrar_pagamento(
         if it.status != "Cancelado"
     )
 
+    # Se nenhum item foi entregue/consumido e o total for zero (ou todos cancelados), não registra faturamento financeiro
+    if total_pedido <= 0:
+        pedido.update_stats(db, "Cancelado", commit=False)
+        pedido.dataFechamento = datetime.now()
+        pedido.idUsuarioFechamento = usuario.idUsuario
+
+        mesa = Mesa.get_by_id(db, pedido.idMesa)
+        if mesa:
+            mesa.update(db, status="Disponivel", commit=False)
+
+        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status.in_(["Aberta", "Ativa"])).all()
+        for s in sessoes_abertas:
+            s.status = "Fechada"
+
+        events_to_publish = list(cancel_events)
+        events_to_publish.append({
+            "type": "order.closed",
+            "idPedido": str(idPedido),
+            "idMesa": str(pedido.idMesa),
+            "status": "Cancelado",
+            "total": 0.0,
+            "totalPago": 0.0,
+            "formaPagamento": dados.formaPagamento,
+        })
+        events_to_publish.append({
+            "type": "table.status_changed",
+            "idMesa": str(pedido.idMesa),
+            "status": "Disponivel",
+        })
+
+        db.commit()
+        db.refresh(pedido)
+
+        for ev in events_to_publish:
+            background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, ev)
+
+        return {
+            "message": "Nenhum item foi consumido na mesa. O pedido foi cancelado e a mesa foi liberada sem gerar histórico financeiro.",
+            "pedidoEncerrado": True,
+            "pedidoCanceladoSemConsumo": True,
+            "totalPedido": 0.0,
+            "totalPago": 0.0,
+            "saldoRestante": 0.0,
+            "pagamento": None,
+            "pedido": {
+                "idPedido": str(pedido.idPedido),
+                "status": "Cancelado",
+                "idMesa": str(pedido.idMesa),
+            },
+        }
+
     total_ja_pago = sum(float(p.valor) for p in pedido.pagamentos)
     saldo_restante_atual = max(0.0, round(total_pedido - total_ja_pago, 2))
 
@@ -302,6 +353,11 @@ def registrar_pagamento(
             "total": float(total_pedido),
             "totalPago": float(novo_total_pago),
             "formaPagamento": dados.formaPagamento,
+        })
+        events_to_publish.append({
+            "type": "table.status_changed",
+            "idMesa": str(pedido.idMesa),
+            "status": "Disponivel",
         })
     else:
         events_to_publish.append({

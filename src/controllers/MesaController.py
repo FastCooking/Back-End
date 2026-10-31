@@ -173,11 +173,32 @@ def gerar_qrcode_mesa(
 @router.post("/{idMesa}/abrir")
 def abrir_mesa(
     idMesa: UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     sessao = SessaoService.abrir_mesa(db, idMesa)
     mesa = Mesa.get_by_id(db, idMesa)
     pedido_ativo = Pedido.get_active_for_table(db, idMesa) if mesa else None
+
+    if not pedido_ativo and mesa:
+        pedido_ativo = Pedido.create(
+            db,
+            idRestaurante=mesa.idRestaurante,
+            idMesa=mesa.idMesa,
+            sessao_id=str(sessao.idSessao),
+            status="Aberto",
+            commit=True,
+        )
+
+    if mesa:
+        event = {
+            "type": "table.opened",
+            "idMesa": str(mesa.idMesa),
+            "idRestaurante": str(mesa.idRestaurante),
+            "numero": mesa.numero,
+            "status": "Indisponivel",
+        }
+        background_tasks.add_task(realtime_hub.publish_event, mesa.idRestaurante, event)
 
     return {
         "idMesa": str(sessao.idMesa),
