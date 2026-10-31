@@ -180,6 +180,16 @@ def abrir_mesa(
     mesa = Mesa.get_by_id(db, idMesa)
     pedido_ativo = Pedido.get_active_for_table(db, idMesa) if mesa else None
 
+    if not pedido_ativo and mesa:
+        pedido_ativo = Pedido.create(
+            db,
+            idRestaurante=mesa.idRestaurante,
+            idMesa=mesa.idMesa,
+            sessao_id=str(sessao.idSessao),
+            status="Aberto",
+            commit=True,
+        )
+
     if mesa:
         event = {
             "type": "table.opened",
