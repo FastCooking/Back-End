@@ -668,10 +668,12 @@ class PedidoService:
     @staticmethod
     def _item_data(item: ItemPedido) -> dict:
         data_criacao = item.dataCriacao
+        tempo_preparo_item = item.cardapio.tempoPreparo if (item.cardapio and getattr(item.cardapio, "tempoPreparo", None)) else None
 
         tempo_espera, pontuacao = calcular_pontuacao(
             item.categoria,
             data_criacao,
+            tempo_preparo=tempo_preparo_item,
         )
 
         nome_item = item.cardapio.nome if item.cardapio else None
@@ -697,6 +699,7 @@ class PedidoService:
             "liberadoParaPreparo": item.liberadoParaPreparo,
             "tempoEsperaMinutos": tempo_espera,
             "pontuacao": pontuacao,
+            "tempoPreparo": tempo_preparo_item or 15,
             "claimedByWaiterId": str(item.claimedByWaiterId) if item.claimedByWaiterId else None,
             "deliveredAt": item.deliveredAt.isoformat() if item.deliveredAt else None,
         }

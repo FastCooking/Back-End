@@ -121,6 +121,13 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                         REFERENCES "Usuarios"("idUsuario") 
                         ON UPDATE CASCADE ON DELETE SET NULL;
                     END IF;
+
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables WHERE table_name = 'Cardapio'
+                    ) THEN
+                        ALTER TABLE "Cardapio" 
+                        ADD COLUMN IF NOT EXISTS "tempoPreparo" INTEGER NOT NULL DEFAULT 15;
+                    END IF;
                 END $$;
             """))
             db.commit()

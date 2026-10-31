@@ -79,20 +79,42 @@ class UsuarioBase(BaseModel):
         return v
 
 
+def validar_senha_forte(v: str) -> str:
+    if len(v) < 8:
+        raise ValueError("A senha deve ter no mínimo 8 caracteres.")
+    if not re.search(r"[a-zA-Z]", v):
+        raise ValueError("A senha deve conter pelo menos uma letra.")
+    if not re.search(r"[0-9]", v):
+        raise ValueError("A senha deve conter pelo menos um número.")
+    return v
+
+
 class UsuarioCreate(UsuarioBase):
     senha: str = Field(
         ...,
-        min_length=6,
+        min_length=8,
         max_length=128,
-        description="Senha de acesso em texto plano (mínimo 6 caracteres)"
+        description="Senha de acesso em texto plano (mínimo 8 caracteres com letras e números)"
     )
+
+    @field_validator("senha")
+    @classmethod
+    def validar_senha(cls, v: str) -> str:
+        return validar_senha_forte(v)
 
 
 class UsuarioUpdate(BaseModel):
     nome: str | None = Field(default=None, min_length=2, max_length=255, description="Nome completo")
     cpf: str | None = Field(default=None, description="CPF válido")
     email: EmailStr | None = Field(default=None, description="E-mail único")
-    senha: str | None = Field(default=None, min_length=6, max_length=128, description="Nova senha")
+    senha: str | None = Field(default=None, min_length=8, max_length=128, description="Nova senha")
+
+    @field_validator("senha")
+    @classmethod
+    def validar_senha_update(cls, v: str | None) -> str | None:
+        if v is not None:
+            return validar_senha_forte(v)
+        return v
     funcao: FuncaoUsuario | None = Field(default=None, description="Nova função/cargo")
 
     @model_validator(mode="before")
