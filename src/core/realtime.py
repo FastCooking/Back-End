@@ -546,7 +546,7 @@ class RealtimeHub:
             deliveries = []
 
             for subscription in tuple(self._subscriptions):
-                if subscription.restaurant_id != restaurant_id:
+                if str(subscription.restaurant_id) != str(restaurant_id):
                     continue
 
                 if subscription.role == "Cozinheiro":
@@ -558,7 +558,9 @@ class RealtimeHub:
                         # RF06: If item is ready (Pronto), notify ALL active waiters of the restaurant.
                         recipient = True
                     else:
-                        recipient = assigned_waiter_id == subscription.user_id
+                        recipient = str(assigned_waiter_id) == str(subscription.user_id)
+                elif subscription.role in ("Gerente", "Adm"):
+                    recipient = True
                 else:
                     recipient = False
 

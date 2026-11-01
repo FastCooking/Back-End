@@ -337,11 +337,18 @@ def registrar_pagamento(
         pedido.dataFechamento = datetime.now()
         pedido.idUsuarioFechamento = usuario.idUsuario
 
+        # Se havia itens com status Pronto, ao fechar a comanda são dados como Entregue
+        for it in pedido.itens:
+            if it.status == "Pronto":
+                it.update_stats(db, "Entregue", commit=False)
+                it.deliveryStatus = "DELIVERED"
+                it.deliveredAt = datetime.now()
+
         mesa = Mesa.get_by_id(db, pedido.idMesa)
         if mesa:
             mesa.update(db, status="Disponivel", commit=False)
 
-        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta").all()
+        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status.in_(["Aberta", "Ativa"])).all()
         for s in sessoes_abertas:
             s.status = "Fechada"
 
@@ -515,7 +522,7 @@ async def pedidos_websocket(
             await websocket.close(code=4401)
             return
 
-        if usuario.funcao not in ("Cozinheiro", "Garcom"):
+        if usuario.funcao not in ("Cozinheiro", "Garcom", "Gerente"):
             await websocket.close(code=4403)
             return
 
