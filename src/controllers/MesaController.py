@@ -191,6 +191,11 @@ def abrir_mesa(
         )
 
     if mesa:
+        if mesa.status != "Indisponivel":
+            mesa.status = "Indisponivel"
+            db.commit()
+            db.refresh(mesa)
+
         event = {
             "type": "table.opened",
             "idMesa": str(mesa.idMesa),
@@ -199,6 +204,15 @@ def abrir_mesa(
             "status": "Indisponivel",
         }
         background_tasks.add_task(realtime_hub.publish_event, mesa.idRestaurante, event)
+        background_tasks.add_task(
+            realtime_hub.publish_event,
+            mesa.idRestaurante,
+            {
+                "type": "table.status_changed",
+                "idMesa": str(mesa.idMesa),
+                "status": "Indisponivel",
+            },
+        )
 
     return {
         "idMesa": str(sessao.idMesa),

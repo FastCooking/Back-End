@@ -426,7 +426,7 @@ def listar_pedidos(
     elif tipo == "ativos":
         query = query.filter(Pedido.status.notin_(["Fechado", "Cancelado"]))
     elif tipo == "historico":
-        query = query.filter(Pedido.status.in_(["Fechado", "Cancelado"]))
+        query = query.filter(Pedido.status == "Fechado")
 
     pedidos = query.order_by(Pedido.dataAbertura.desc()).all()
     resultado = []
@@ -459,6 +459,9 @@ def listar_pedidos(
                 "valor": float(p.valor),
                 "dataPagamento": p.dataPagamento.isoformat() if p.dataPagamento else None,
             })
+
+        if tipo == "historico" and total <= 0 and not pagamentos_res:
+            continue
 
         nome_fechamento = pedido.usuario_fechamento.nome if pedido.usuario_fechamento else None
         funcao_fechamento = pedido.usuario_fechamento.funcao if pedido.usuario_fechamento else None

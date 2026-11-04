@@ -112,6 +112,9 @@ class SessaoService:
                 sessao_ativa.dataEncerramento = func.now()
                 db.commit()
             else:
+                if mesa.status != "Indisponivel":
+                    mesa.status = "Indisponivel"
+                    db.commit()
                 return sessao_ativa
 
         try:
@@ -137,6 +140,9 @@ class SessaoService:
             )
 
             if sessao_ativa:
+                if mesa.status != "Indisponivel":
+                    mesa.status = "Indisponivel"
+                    db.commit()
                 return sessao_ativa
 
             raise HTTPException(
