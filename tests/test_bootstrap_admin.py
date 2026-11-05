@@ -1,4 +1,3 @@
-import os
 from src.core.bootstrap import garantir_usuario_admin
 from src.models.Usuario import Usuario
 from src.services.UsuarioService import verificar_senha

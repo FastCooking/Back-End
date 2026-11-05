@@ -1,5 +1,5 @@
 import io
-import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image

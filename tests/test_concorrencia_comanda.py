@@ -1,20 +1,14 @@
-import concurrent.futures
 import uuid
-import pytest
-from fastapi.testclient import TestClient
 
-from src.app import app
+import pytest
+
 from src.core.security import criar_token
-from tests.conftest import TestingSessionLocal
 from src.models.Cardapio import Cardapio
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
 from src.models.Restaurante import Restaurante
-from src.models.Sessao import Sessao
 from src.models.Usuario import Usuario
-from src.schemas.PedidoSchema import PedidoItemCreate
-from src.services.PedidoService import PedidoService
 from src.services.UsuarioService import hash_senha
 
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,7 @@ class RF08ValidationResult:
     itens_pendentes_count: int
     itens_prontos_count: int
     itens_ativos_count: int
-    motivo_bloqueio: Optional[str] = None
+    motivo_bloqueio: str | None = None
 
 
 class RF08Service:

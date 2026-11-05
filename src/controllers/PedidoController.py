@@ -1,7 +1,14 @@
 import asyncio
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, WebSocket
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Response,
+    WebSocket,
+)
 from fastapi import status as http_status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocketDisconnect
@@ -225,12 +232,15 @@ def cancelar_item(
     return result
 
 
-from pydantic import BaseModel
-from src.models.Pagamento import Pagamento
-from src.models.Mesa import Mesa
-from src.models.Sessao import Sessao
-from src.models.Pedido import Pedido
 from datetime import datetime
+
+from pydantic import BaseModel
+
+from src.models.Mesa import Mesa
+from src.models.Pagamento import Pagamento
+from src.models.Pedido import Pedido
+from src.models.Sessao import Sessao
+
 
 class PagamentoCreateRequest(BaseModel):
     formaPagamento: str

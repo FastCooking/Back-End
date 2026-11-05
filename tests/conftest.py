@@ -1,4 +1,5 @@
 import os
+
 os.environ["BCRYPT_ROUNDS"] = "4"
 import sys
 

@@ -1,6 +1,6 @@
+import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
-import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session

@@ -148,11 +148,11 @@ async def editar_item(
             path_image = None
 
         dados_dict = {}
-        if "nome" in form and form["nome"]:
+        if form.get("nome"):
             dados_dict["nome"] = form["nome"]
-        if "preco" in form and form["preco"]:
+        if form.get("preco"):
             dados_dict["preco"] = float(form["preco"])
-        if "categoria" in form and form["categoria"]:
+        if form.get("categoria"):
             dados_dict["categoria"] = form["categoria"]
         if "descricao" in form:
             dados_dict["descricao"] = form["descricao"] or None
