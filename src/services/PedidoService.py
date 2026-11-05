@@ -5,12 +5,16 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from src.core.events import domain_event_bus
 from src.core.realtime import realtime_hub
 from src.models.Cardapio import Cardapio
+from src.models.Entrega import Entrega
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
 from src.models.Usuario import Usuario
+from src.schemas.DeliverySchema import DeliveryState
+from src.schemas.KdsNotificationSchema import OrderItemReadyEvent
 from src.schemas.PedidoSchema import PedidoCreate, PedidoItemCreate
 from src.services.PrioridadeKDS import calcular_pontuacao, eh_sobremesa
 from src.services.RF08Service import RF08Service, RF08ValidationResult
@@ -370,9 +374,29 @@ class PedidoService:
             .all()
         )
         rf08_res = RF08Service.reavaliar_comanda(self.db, pedido)
+        total = sum(
+            float(it.precoUnitario) * it.quantidade
+            for it in itens
+            if it.status != "Cancelado"
+        )
+        pagamentos = [
+            {
+                "idPagamento": str(p.idPagamento),
+                "formaPagamento": p.formaPagamento,
+                "valor": float(p.valor),
+                "dataPagamento": p.dataPagamento.isoformat() if p.dataPagamento else None,
+            }
+            for p in (pedido.pagamentos or [])
+        ]
+        total_pago = sum(p["valor"] for p in pagamentos)
+        saldo_restante = max(0.0, round(total - total_pago, 2))
         return {
             "pedido": self._pedido_data(pedido, rf08_res),
             "itens": [self._item_data(item) for item in itens],
+            "total": round(total, 2),
+            "pagamentos": pagamentos,
+            "totalPago": round(total_pago, 2),
+            "saldoRestante": saldo_restante,
         }
 
     def get_order_tracking(self, idPedido: uuid.UUID) -> dict:
@@ -420,6 +444,8 @@ class PedidoService:
             "type": "ORDER_UPDATE",
             "order": {
                 "id": str(pedido.idPedido),
+                "idMesa": str(pedido.idMesa) if getattr(pedido, "idMesa", None) else None,
+                "idRestaurante": str(pedido.idRestaurante) if getattr(pedido, "idRestaurante", None) else None,
                 "customerName": f"Mesa {table_number}" if table_number else "Cliente",
                 "tableNumber": table_number,
                 "status": overall_status,
@@ -493,6 +519,38 @@ class PedidoService:
             # Reavalia RF08 sempre que status avança no KDS
             RF08Service.reavaliar_comanda(self.db, pedido)
 
+            if novo_status == "Pronto":
+                item.deliveryStatus = DeliveryState.WAITING_DELIVERY_PICKUP.value
+                existing_entrega = (
+                    self.db.query(Entrega)
+                    .filter(Entrega.idItemPedido == item.idItemPedido)
+                    .first()
+                )
+                if existing_entrega is None:
+                    self.db.add(
+                        Entrega(
+                            idRestaurante=pedido.idRestaurante,
+                            idPedido=pedido.idPedido,
+                            idItemPedido=item.idItemPedido,
+                            status=DeliveryState.WAITING_DELIVERY_PICKUP.value,
+                            dataCriacao=item.dataCriacao or datetime.now(UTC),
+                        )
+                    )
+            elif novo_status == "Entregue":
+                now_utc = datetime.now(UTC)
+                item.deliveryStatus = DeliveryState.DELIVERED.value
+                item.deliveredAt = now_utc
+                if usuario and getattr(usuario, "idUsuario", None):
+                    item.claimedByWaiterId = usuario.idUsuario
+                existing_entrega = (
+                    self.db.query(Entrega)
+                    .filter(Entrega.idItemPedido == item.idItemPedido)
+                    .first()
+                )
+                if existing_entrega is not None:
+                    existing_entrega.status = DeliveryState.DELIVERED.value
+                    existing_entrega.deliveredAt = now_utc
+
             self.db.commit()
             self.db.refresh(item)
             self.db.refresh(pedido)
@@ -505,6 +563,68 @@ class PedidoService:
             "item": self._item_data(item),
             "event": self._event_data(
                 "item.status_changed", pedido, item
+            ),
+        }
+
+    def update_item_quantity(
+        self,
+        idItemPedido: uuid.UUID,
+        nova_quantidade: int,
+        usuario: Usuario,
+    ) -> dict:
+        item = (
+            self.db.query(ItemPedido)
+            .filter(ItemPedido.idItemPedido == idItemPedido)
+            .with_for_update()
+            .first()
+        )
+
+        if item is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        pedido = Pedido.get_by_id(self.db, item.idPedido)
+
+        if pedido is None or (usuario.funcao != "Adm" and pedido.idRestaurante != usuario.idRestaurante):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        if pedido.status in ("Fechado", "Cancelado"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível alterar item de um pedido encerrado ou cancelado.",
+            )
+
+        if item.status != "Pendente":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Não é possível alterar a quantidade do item pois o preparo já foi iniciado (status atual: '{item.status}').",
+            )
+
+        try:
+            if nova_quantidade <= 0:
+                item.update_stats(self.db, "Cancelado", commit=False)
+                RF08Service.reavaliar_comanda(self.db, pedido)
+            else:
+                item.quantidade = nova_quantidade
+
+            self.db.commit()
+            self.db.refresh(item)
+            self.db.refresh(pedido)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return {
+            "item": self._item_data(item),
+            "event": self._event_data(
+                "item.quantity_changed" if nova_quantidade > 0 else "item.status_changed",
+                pedido,
+                item,
             ),
         }
 
@@ -671,6 +791,10 @@ class PedidoService:
 
     async def publish_events(self, events: Iterable[dict]) -> None:
         for event in events:
+            domain_event = event.get("domainEvent")
+            if domain_event is not None:
+                await domain_event_bus.publish(domain_event)
+
             if "item" in event and "restaurantId" in event:
                 await realtime_hub.publish_item_event(
                     event_type=event["type"],
@@ -763,10 +887,12 @@ class PedidoService:
     @staticmethod
     def _item_data(item: ItemPedido) -> dict:
         data_criacao = item.dataCriacao
+        tempo_preparo_item = item.cardapio.tempoPreparo if (item.cardapio and getattr(item.cardapio, "tempoPreparo", None)) else None
 
         tempo_espera, pontuacao = calcular_pontuacao(
             item.categoria,
             data_criacao,
+            tempo_preparo=tempo_preparo_item,
         )
 
         nome_item = item.cardapio.nome if item.cardapio else None
@@ -794,6 +920,9 @@ class PedidoService:
             "origem": origem,
             "tempoEsperaMinutos": tempo_espera,
             "pontuacao": pontuacao,
+            "tempoPreparo": tempo_preparo_item or 15,
+            "claimedByWaiterId": str(item.claimedByWaiterId) if item.claimedByWaiterId else None,
+            "deliveredAt": item.deliveredAt.isoformat() if item.deliveredAt else None,
         }
 
     @classmethod
@@ -803,9 +932,30 @@ class PedidoService:
         pedido: Pedido,
         item: ItemPedido,
     ) -> dict:
+        item_payload = cls._item_data(item)
+        domain_event: OrderItemReadyEvent | None = None
+
+        if event_type == "item.status_changed" and item.status == "Pronto":
+            table_num = (
+                item_payload.get("numeroMesa")
+                if item_payload.get("numeroMesa") is not None
+                else (pedido.mesa.numero if pedido.mesa else str(pedido.idMesa))
+            )
+            domain_event = OrderItemReadyEvent(
+                restaurant_id=pedido.idRestaurante,
+                order_id=pedido.idPedido,
+                table_number=table_num,
+                item_id=item.idItemPedido,
+                item_name=item_payload.get("nomeItem") or "Item do Cardápio",
+                quantity=item.quantidade,
+                notes=item.observacao or "",
+                assigned_waiter_id=pedido.idGarcom,
+            )
+
         return {
             "type": event_type,
             "restaurantId": pedido.idRestaurante,
             "assignedWaiterId": pedido.idGarcom,
-            "item": cls._item_data(item),
+            "item": item_payload,
+            "domainEvent": domain_event,
         }

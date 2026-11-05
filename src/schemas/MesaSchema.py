@@ -19,5 +19,6 @@ class MesaResponse(BaseModel):
     idRestaurante: uuid.UUID
     numero: int
     status: str
+    idPedidoAtivo: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}

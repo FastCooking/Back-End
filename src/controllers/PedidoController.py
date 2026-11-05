@@ -1,5 +1,7 @@
 import asyncio
+import json
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import (
     APIRouter,
@@ -12,15 +14,21 @@ from fastapi import (
 from fastapi import status as http_status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocketDisconnect
+from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.core.realtime import realtime_hub
-from src.core.security import exigir_funcao, get_user_from_token
+from src.core.security import decodificar_token, exigir_funcao, get_user_from_token
 from src.database.connection import get_db
+from src.models.Mesa import Mesa
+from src.models.Pagamento import Pagamento
+from src.models.Pedido import Pedido
+from src.models.Sessao import Sessao
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
     AdicionarItensMesaRequest,
+    ItemPedidoQuantidadeUpdate,
     ItemPedidoStatusUpdate,
     PedidoCreate,
     PedidoItemCreate,
@@ -41,11 +49,10 @@ def get_optional_user(
         return None
     try:
         return get_user_from_token(credenciais.credentials, db)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
-@router.post("", status_code=http_status.HTTP_201_CREATED)
 @router.post("/mesas/{idMesa}/itens")
 def adicionar_itens_mesa(
     idMesa: uuid.UUID,
@@ -71,6 +78,7 @@ def adicionar_itens_mesa(
     return result
 
 
+@router.post("", status_code=http_status.HTTP_201_CREATED)
 def criar_pedido(
     dados: PedidoCreate,
     background_tasks: BackgroundTasks,
@@ -97,7 +105,6 @@ def adicionar_itens_ao_pedido(
     return result
 
 
-@router.get("/{idPedido}")
 @router.delete("/{idPedido}/itens/{idItemPedido}")
 def remover_item_pedido(
     idPedido: uuid.UUID,
@@ -127,6 +134,7 @@ def assumir_entrega(
     return result
 
 
+@router.get("/{idPedido}")
 def obter_pedido(
     idPedido: uuid.UUID,
     db: Session = Depends(get_db),
@@ -183,7 +191,7 @@ async def handle_tracking_websocket(
                 pass
     except WebSocketDisconnect:
         pass
-    except Exception:
+    except Exception:  # noqa: BLE001
         await websocket.close(code=1011)
     finally:
         await realtime_hub.disconnect_tracking(websocket)
@@ -199,6 +207,20 @@ def alterar_status_item(
 ) -> dict:
     service = PedidoService(db)
     result = service.update_item_status(idItemPedido, dados.status, usuario)
+    background_tasks.add_task(service.publish_events, [result.pop("event")])
+    return result
+
+
+@router.patch("/itens/{idItemPedido}/quantidade")
+def alterar_quantidade_item(
+    idItemPedido: uuid.UUID,
+    dados: ItemPedidoQuantidadeUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    result = service.update_item_quantity(idItemPedido, dados.quantidade, usuario)
     background_tasks.add_task(service.publish_events, [result.pop("event")])
     return result
 
@@ -232,19 +254,10 @@ def cancelar_item(
     return result
 
 
-from datetime import datetime
-
-from pydantic import BaseModel
-
-from src.models.Mesa import Mesa
-from src.models.Pagamento import Pagamento
-from src.models.Pedido import Pedido
-from src.models.Sessao import Sessao
-
-
 class PagamentoCreateRequest(BaseModel):
     formaPagamento: str
     valor: float | None = None
+    cancelar_pendentes: bool = False
 
 
 @router.post("/{idPedido}/pagamento", status_code=http_status.HTTP_201_CREATED)
@@ -255,7 +268,6 @@ def registrar_pagamento(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
-    service = PedidoService(db)
     pedido = Pedido.get_by_id(db, idPedido)
     if not pedido or pedido.idRestaurante != usuario.idRestaurante:
         raise HTTPException(
@@ -269,51 +281,182 @@ def registrar_pagamento(
             detail="Este pedido já foi encerrado.",
         )
 
-    # Calcula valor total se não informado
-    valor_total = dados.valor
-    if valor_total is None or valor_total <= 0:
-        dados_pedido = service.get_order(idPedido)
-        valor_total = float(dados_pedido.get("total", 0.0))
+    # 1. Validação de itens: não pode fechar se houver item "Em preparo"
+    itens_em_preparo = [it for it in pedido.itens if it.status == "Em preparo"]
+    if itens_em_preparo:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="Não é possível fechar a mesa com itens em preparo na cozinha. Aguarde a finalização.",
+        )
+
+    # Se houver itens "Pendente", eles são cancelados para realizar o fechamento da mesa
+    itens_pendentes = [it for it in pedido.itens if it.status == "Pendente"]
+    cancel_events = []
+    for it in itens_pendentes:
+        it.update_stats(db, "Cancelado", commit=False)
+        cancel_events.append({
+            "type": "item.cancelled",
+            "idPedido": str(pedido.idPedido),
+            "idItemPedido": str(it.idItemPedido),
+            "nome": it.cardapio.nome if it.cardapio else "Item",
+            "usuario": usuario.nome,
+            "motivo": "Cancelado automaticamente no fechamento da comanda",
+        })
+
+    # Calcula valor total considerando itens não cancelados
+    total_pedido = sum(
+        float(it.precoUnitario) * it.quantidade
+        for it in pedido.itens
+        if it.status != "Cancelado"
+    )
+
+    # Se nenhum item foi entregue/consumido e o total for zero (ou todos cancelados), não registra faturamento financeiro
+    if total_pedido <= 0:
+        pedido.update_stats(db, "Cancelado", commit=False)
+        pedido.dataFechamento = datetime.now()
+        pedido.idUsuarioFechamento = usuario.idUsuario
+
+        mesa = Mesa.get_by_id(db, pedido.idMesa)
+        if mesa:
+            mesa.update(db, status="Disponivel", commit=False)
+
+        sessoes_abertas = (
+            db.query(Sessao)
+            .filter(
+                Sessao.idMesa == pedido.idMesa,
+                Sessao.status.in_(["Aberta", "Ativa"]),
+            )
+            .all()
+        )
+        for s in sessoes_abertas:
+            s.status = "Fechada"
+
+        events_to_publish = list(cancel_events)
+        events_to_publish.append({
+            "type": "order.closed",
+            "idPedido": str(idPedido),
+            "idMesa": str(pedido.idMesa),
+            "status": "Cancelado",
+            "total": 0.0,
+            "totalPago": 0.0,
+            "formaPagamento": dados.formaPagamento,
+        })
+        events_to_publish.append({
+            "type": "table.status_changed",
+            "idMesa": str(pedido.idMesa),
+            "status": "Disponivel",
+        })
+
+        db.commit()
+        db.refresh(pedido)
+
+        for ev in events_to_publish:
+            background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, ev)
+
+        return {
+            "message": "Nenhum item foi consumido na mesa. O pedido foi cancelado e a mesa foi liberada sem gerar histórico financeiro.",
+            "pedidoEncerrado": True,
+            "pedidoCanceladoSemConsumo": True,
+            "totalPedido": 0.0,
+            "totalPago": 0.0,
+            "saldoRestante": 0.0,
+            "pagamento": None,
+            "pedido": {
+                "idPedido": str(pedido.idPedido),
+                "status": "Cancelado",
+                "idMesa": str(pedido.idMesa),
+            },
+        }
+
+    total_ja_pago = sum(float(p.valor) for p in pedido.pagamentos)
+    saldo_restante_atual = max(0.0, round(total_pedido - total_ja_pago, 2))
+
+    valor_a_pagar = dados.valor
+    if valor_a_pagar is None or valor_a_pagar <= 0:
+        valor_a_pagar = saldo_restante_atual
+    else:
+        valor_a_pagar = round(min(valor_a_pagar, saldo_restante_atual), 2)
+
+    if valor_a_pagar <= 0 and total_pedido > 0:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Não há saldo pendente para pagamento.",
+        )
 
     # Cria pagamento
     pagamento = Pagamento.create(
         db,
         idPedido=idPedido,
         formaPagamento=dados.formaPagamento,
-        valor=valor_total,
+        valor=valor_a_pagar,
     )
 
-    # Fecha o pedido
-    pedido.update_stats(db, "Fechado", commit=False)
-    pedido.dataFechamento = datetime.now()
+    novo_total_pago = round(total_ja_pago + valor_a_pagar, 2)
+    novo_saldo_restante = max(0.0, round(total_pedido - novo_total_pago, 2))
 
-    # Libera a mesa
-    mesa = Mesa.get_by_id(db, pedido.idMesa)
-    if mesa:
-        mesa.update(db, status="Disponivel", commit=False)
+    events_to_publish = list(cancel_events)
+    pedido_encerrado = False
 
-    # Encerra sessão da mesa se existir
-    sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta").all()
-    for s in sessoes_abertas:
-        s.status = "Fechada"
+    if novo_saldo_restante <= 0.01:
+        pedido_encerrado = True
+        pedido.update_stats(db, "Fechado", commit=False)
+        pedido.dataFechamento = datetime.now()
+        pedido.idUsuarioFechamento = usuario.idUsuario
+
+        mesa = Mesa.get_by_id(db, pedido.idMesa)
+        if mesa:
+            mesa.update(db, status="Disponivel", commit=False)
+
+        sessoes_abertas = (
+            db.query(Sessao)
+            .filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta")
+            .all()
+        )
+        for s in sessoes_abertas:
+            s.status = "Fechada"
+
+        events_to_publish.append({
+            "type": "order.closed",
+            "idPedido": str(idPedido),
+            "idMesa": str(pedido.idMesa),
+            "status": "Fechado",
+            "total": float(total_pedido),
+            "totalPago": float(novo_total_pago),
+            "formaPagamento": dados.formaPagamento,
+        })
+        events_to_publish.append({
+            "type": "table.status_changed",
+            "idMesa": str(pedido.idMesa),
+            "status": "Disponivel",
+        })
+    else:
+        events_to_publish.append({
+            "type": "order.payment_partial",
+            "idPedido": str(idPedido),
+            "idMesa": str(pedido.idMesa),
+            "valor": float(valor_a_pagar),
+            "saldoRestante": float(novo_saldo_restante),
+            "formaPagamento": dados.formaPagamento,
+        })
 
     db.commit()
     db.refresh(pedido)
-    if mesa:
-        db.refresh(mesa)
 
-    event_payload = {
-        "type": "order.closed",
-        "idPedido": str(idPedido),
-        "idMesa": str(pedido.idMesa),
-        "status": "Fechado",
-        "valor": float(valor_total),
-        "formaPagamento": dados.formaPagamento,
-    }
-    background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, event_payload)
+    for ev in events_to_publish:
+        background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, ev)
+
+    mensagem = (
+        f"Pagamento de R$ {valor_a_pagar:.2f} registrado com sucesso. Pedido encerrado e mesa liberada."
+        if pedido_encerrado
+        else f"Pagamento parcial de R$ {valor_a_pagar:.2f} ({dados.formaPagamento}) registrado. Saldo restante: R$ {novo_saldo_restante:.2f}."
+    )
 
     return {
-        "message": f"Pagamento de R$ {valor_total:.2f} registrado com sucesso. Pedido encerrado e mesa liberada.",
+        "message": mensagem,
+        "pedidoEncerrado": pedido_encerrado,
+        "totalPedido": float(total_pedido),
+        "totalPago": float(novo_total_pago),
+        "saldoRestante": float(novo_saldo_restante),
         "pagamento": {
             "idPagamento": str(pagamento.idPagamento),
             "formaPagamento": pagamento.formaPagamento,
@@ -380,6 +523,8 @@ def listar_pedidos(
                 "dataPagamento": p.dataPagamento.isoformat() if p.dataPagamento else None,
             })
 
+        nome_fechamento = pedido.usuario_fechamento.nome if pedido.usuario_fechamento else None
+        funcao_fechamento = pedido.usuario_fechamento.funcao if pedido.usuario_fechamento else None
         resultado.append({
             "idPedido": str(pedido.idPedido),
             "idRestaurante": str(pedido.idRestaurante),
@@ -390,6 +535,9 @@ def listar_pedidos(
             "status": pedido.status,
             "dataAbertura": pedido.dataAbertura.isoformat() if pedido.dataAbertura else None,
             "dataFechamento": pedido.dataFechamento.isoformat() if pedido.dataFechamento else None,
+            "idUsuarioFechamento": str(pedido.idUsuarioFechamento) if pedido.idUsuarioFechamento else None,
+            "nomeUsuarioFechamento": nome_fechamento,
+            "funcaoUsuarioFechamento": funcao_fechamento,
             "total": round(total, 2),
             "itens": itens_res,
             "pagamentos": pagamentos_res,
@@ -477,3 +625,165 @@ async def pedidos_websocket(
 
     finally:
         await realtime_hub.disconnect(websocket)
+
+
+def _extract_handshake_credentials(websocket: WebSocket) -> tuple[str | None, str | None]:
+    """Extrai token JWT e shiftStatus dos headers ou query params do handshake WebSocket."""
+    auth_header = websocket.headers.get("authorization", "")
+    token: str | None = None
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+    elif websocket.query_params.get("token"):
+        token = websocket.query_params.get("token")
+
+    shift_override = (
+        websocket.headers.get("x-shift-status")
+        or websocket.query_params.get("shiftStatus")
+        or websocket.query_params.get("shift")
+    )
+    return token, shift_override
+
+
+@router.websocket("/ws/waiters")
+@router.websocket("/ws/garcons")
+async def waiters_room_websocket(
+    websocket: WebSocket,
+    db: Session = Depends(get_db),
+) -> None:
+    await handle_waiter_room_websocket(websocket, db)
+
+
+async def handle_waiter_room_websocket(
+    websocket: WebSocket,
+    db: Session,
+) -> None:
+    """
+    Gateway WebSocket dedicado para a sala de garçons em serviço (`room:waiters:active`).
+    Suporta autenticação no handshake (Header Authorization / Query ?token=) ou no 1º frame JSON,
+    valida role WAITER/Garcom e status ON_SHIFT, e executa heartbeat Ping-Pong.
+    """
+    await websocket.accept()
+
+    try:
+        token, shift_override = _extract_handshake_credentials(websocket)
+
+        if not token:
+            auth_message = await asyncio.wait_for(
+                websocket.receive_json(),
+                timeout=5.0,
+            )
+            if isinstance(auth_message, dict) and auth_message.get("type") == "authenticate":
+                token = auth_message.get("token")
+                if not shift_override:
+                    shift_override = (
+                        auth_message.get("shiftStatus")
+                        or auth_message.get("shift_status")
+                    )
+
+        if not isinstance(token, str) or not token.strip():
+            await websocket.close(code=4401)
+            return
+
+        try:
+            claims = decodificar_token(token)
+            usuario = get_user_from_token(token, db)
+        except HTTPException:
+            await websocket.close(code=4401)
+            return
+
+        effective_role = claims.get("funcao") or usuario.funcao
+        effective_shift = (
+            shift_override
+            or claims.get("shift_status")
+            or ("ON_SHIFT" if usuario.status else "OFF_SHIFT")
+        ).strip().upper()
+
+        if effective_role not in ("Garcom", "WAITER") or effective_shift != "ON_SHIFT":
+            await websocket.close(code=4403)
+            return
+
+        await realtime_hub.join_waiters_room(
+            websocket=websocket,
+            restaurant_id=usuario.idRestaurante,
+            user_id=usuario.idUsuario,
+            role=effective_role,
+            shift_status=effective_shift,
+        )
+
+        while True:
+            try:
+                raw_msg = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=25.0,
+                )
+                await realtime_hub.record_heartbeat(websocket)
+
+                if raw_msg.strip().lower() == "ping":
+                    await websocket.send_text("pong")
+                    continue
+
+                try:
+                    parsed = json.loads(raw_msg)
+                except ValueError:
+                    continue
+
+                if not isinstance(parsed, dict):
+                    continue
+
+                msg_type = parsed.get("type")
+                if msg_type == "ping":
+                    await websocket.send_json(
+                        {
+                            "type": "pong",
+                            "timestamp": datetime.now(UTC).isoformat(),
+                        }
+                    )
+                elif msg_type in ("shift:update", "shift:end"):
+                    new_shift = (
+                        "OFF_SHIFT"
+                        if msg_type == "shift:end"
+                        else str(parsed.get("shiftStatus", "OFF_SHIFT")).upper()
+                    )
+                    still_active = await realtime_hub.update_waiter_shift(
+                        websocket, new_shift
+                    )
+                    if not still_active:
+                        await websocket.send_json(
+                            {
+                                "type": "room.left",
+                                "room": "room:waiters:active",
+                                "reason": "shift_ended",
+                                "timestamp": datetime.now(UTC).isoformat(),
+                            }
+                        )
+                        await websocket.close(code=4403)
+                        return
+
+            except TimeoutError:
+                try:
+                    await asyncio.wait_for(
+                        websocket.send_json(
+                            {
+                                "type": "ping",
+                                "timestamp": datetime.now(UTC).isoformat(),
+                            }
+                        ),
+                        timeout=realtime_hub.send_timeout,
+                    )
+                except Exception:  # noqa: BLE001
+                    break
+
+    except (TimeoutError, ValueError):
+        await websocket.close(code=4401)
+
+    except PermissionError:
+        await websocket.close(code=4403)
+
+    except WebSocketDisconnect:
+        pass
+
+    except (OSError, RuntimeError, SQLAlchemyError):
+        await websocket.close(code=1011)
+
+    finally:
+        await realtime_hub.leave_waiters_room(websocket, reason="connection_closed")

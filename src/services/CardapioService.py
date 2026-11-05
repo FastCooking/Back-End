@@ -74,7 +74,7 @@ class CardapioService:
             caminho_arquivo = uploads_dir / relative_path
             if os.path.exists(caminho_arquivo):
                 os.remove(caminho_arquivo)
-        except Exception as err:
+        except OSError as err:
             print(f"[AVISO] Não foi possível remover foto antiga: {err}")
 
     def criar(
@@ -95,6 +95,7 @@ class CardapioService:
             nome=dados.nome,
             preco=float(dados.preco),
             categoria=dados.categoria,
+            tempoPreparo=dados.tempoPreparo if dados.tempoPreparo is not None else 15,
             pathImage=dados.pathImage,
             descricao=dados.descricao,
         )
@@ -150,6 +151,7 @@ class CardapioService:
             nome=dados.nome,
             preco=float(dados.preco) if dados.preco is not None else None,
             categoria=dados.categoria,
+            tempoPreparo=dados.tempoPreparo if dados.tempoPreparo is not None else None,
             pathImage=dados.pathImage,
             descricao=dados.descricao,
         )

@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, ForeignKey, Numeric, String, Text, text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -27,6 +27,7 @@ class Cardapio(Base):
     descricao: str = Column(Text, nullable=True)
     preco: float = Column(Numeric(10, 2), nullable=False)
     categoria: str = Column(String(100), nullable=False)
+    tempoPreparo: int = Column(Integer, nullable=False, default=15, server_default=text("15"))
     status: bool = Column(Boolean, nullable=False, default=True)
 
     # Relacionamentos
@@ -45,6 +46,7 @@ class Cardapio(Base):
         nome: str,
         preco: float,
         categoria: str,
+        tempoPreparo: int = 15,
         pathImage: str | None = None,
         descricao: str | None = None,
         status: bool = True,
@@ -54,6 +56,7 @@ class Cardapio(Base):
             nome=nome,
             preco=preco,
             categoria=categoria,
+            tempoPreparo=tempoPreparo,
             pathImage=pathImage,
             descricao=descricao,
             status=status,
@@ -94,6 +97,7 @@ class Cardapio(Base):
         descricao: str | None = None,
         preco: float | None = None,
         categoria: str | None = None,
+        tempoPreparo: int | None = None,
         status: bool | None = None,
     ) -> "Cardapio":
         """Atualiza os dados de um item do cardápio."""
@@ -107,6 +111,8 @@ class Cardapio(Base):
             self.preco = preco
         if categoria is not None:
             self.categoria = categoria
+        if tempoPreparo is not None:
+            self.tempoPreparo = tempoPreparo
         if status is not None:
             self.status = status
         db.commit()

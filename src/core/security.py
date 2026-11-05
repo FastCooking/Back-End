@@ -27,13 +27,34 @@ def criar_token(
     idUsuario: uuid.UUID | str,
     funcao: str,
     idRestaurante: uuid.UUID | str | None = None,
+    shift_status: str = "ON_SHIFT",
 ) -> str:
-    """Gera um JWT contendo o id, o perfil e o restaurante do funcionário."""
+    """Gera um JWT contendo o id, o perfil, o status de turno e o restaurante do funcionário."""
     expira = datetime.now(UTC) + timedelta(minutes=EXPIRA_EM_MINUTOS)
-    payload = {"sub": str(idUsuario), "funcao": funcao, "exp": expira}
+    payload = {
+        "sub": str(idUsuario),
+        "funcao": funcao,
+        "shift_status": shift_status,
+        "exp": expira,
+    }
     if idRestaurante:
         payload["idRestaurante"] = str(idRestaurante)
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decodificar_token(token: str) -> dict:
+    """Decodifica e valida a assinatura/expiração do JWT retornando o dicionário de claims."""
+    excecao_credenciais = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Não foi possível validar as credenciais.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        if not SECRET_KEY:
+            raise excecao_credenciais
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except (JWTError, TypeError, ValueError) as exc:
+        raise excecao_credenciais from exc
 
 
 def criar_refresh_token(idUsuario: uuid.UUID | str) -> str:

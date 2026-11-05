@@ -33,8 +33,21 @@ def listar_mesas(
     status: str | None = Query(None, description="Filtro opcional por status"),
     db: Session = Depends(get_db),
 ):
+    SessaoService.expirar_sessoes_inativas(db, limite_minutos=10)
     mesas = Mesa.get_all_by_restaurant(db, idRestaurante, status)
-    return mesas
+    resultado = []
+    for m in mesas:
+        ped = Pedido.get_active_for_table(db, m.idMesa)
+        resultado.append(
+            MesaResponse(
+                idMesa=m.idMesa,
+                idRestaurante=m.idRestaurante,
+                numero=m.numero,
+                status=m.status,
+                idPedidoAtivo=ped.idPedido if ped else None,
+            )
+        )
+    return resultado
 
 
 @router.post(
@@ -160,11 +173,32 @@ def gerar_qrcode_mesa(
 @router.post("/{idMesa}/abrir")
 def abrir_mesa(
     idMesa: UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     sessao = SessaoService.abrir_mesa(db, idMesa)
     mesa = Mesa.get_by_id(db, idMesa)
     pedido_ativo = Pedido.get_active_for_table(db, idMesa) if mesa else None
+
+    if not pedido_ativo and mesa:
+        pedido_ativo = Pedido.create(
+            db,
+            idRestaurante=mesa.idRestaurante,
+            idMesa=mesa.idMesa,
+            sessao_id=str(sessao.idSessao),
+            status="Aberto",
+            commit=True,
+        )
+
+    if mesa:
+        event = {
+            "type": "table.opened",
+            "idMesa": str(mesa.idMesa),
+            "idRestaurante": str(mesa.idRestaurante),
+            "numero": mesa.numero,
+            "status": "Indisponivel",
+        }
+        background_tasks.add_task(realtime_hub.publish_event, mesa.idRestaurante, event)
 
     return {
         "idMesa": str(sessao.idMesa),
@@ -293,4 +327,15 @@ def obter_pedido_ativo_mesa(
             detail="Nenhum pedido ativo encontrado para esta mesa.",
         )
 
-    return PedidoService(db).get_order(pedido.idPedido)
+    detalhes = PedidoService(db).get_order(pedido.idPedido)
+    pedido_data = detalhes.get("pedido", {})
+    return {
+        **detalhes,
+        **pedido_data,
+        "idPedido": pedido.idPedido,
+        "status": pedido.status,
+        "idMesa": pedido.idMesa,
+        "sessao_id": pedido.sessao_id,
+        "idRestaurante": pedido.idRestaurante,
+        "itens": detalhes.get("itens", []),
+    }

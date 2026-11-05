@@ -25,7 +25,9 @@ class Pagamento(Base):
     )
     formaPagamento: str = Column(String(30), nullable=False)
     valor: float = Column(Numeric(10, 2), nullable=False)
-    dataPagamento: datetime = Column(DateTime, nullable=False, server_default=func.now())
+    dataPagamento: datetime = Column(
+        DateTime, nullable=False, default=datetime.now, server_default=func.now()
+    )
 
     # Relacionamentos
     pedido = relationship("Pedido", back_populates="pagamentos")

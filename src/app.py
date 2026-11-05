@@ -22,22 +22,28 @@ from sqlalchemy.orm import Session
 
 from src.controllers.AuthController import router as auth_router
 from src.controllers.CardapioController import router as cardapio_router
+from src.controllers.DeliveryController import router as delivery_router
 from src.controllers.EstoqueController import router as estoque_router
 from src.controllers.FichaTecnicaController import router as ficha_tecnica_router
 from src.controllers.MesaController import router as mesa_router
 from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
-from src.core.bootstrap import garantir_usuario_admin
+from src.core.bootstrap import executar_migracoes_seguras, garantir_usuario_admin
 from src.database.connection import get_db, test_connection
+from src.services.DeliveryService import DeliveryDomainError
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Executa o bootstrap de deploy de forma segura e idempotente
     try:
+        executar_migracoes_seguras()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[BOOTSTRAP] Aviso ao executar migrações: {exc}")
+    try:
         garantir_usuario_admin()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"[BOOTSTRAP] Aviso/Erro ao verificar usuário padrão: {exc}")
     yield
 
@@ -58,6 +64,20 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(DeliveryDomainError)
+async def delivery_domain_exception_handler(request: Request, exc: DeliveryDomainError):
+    """Retorna payload semântico estruturado com código amigável para erros de domínio de entrega."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "code": exc.code,
+            "error": exc.code,
+            "message": exc.message,
+            "detail": f"{exc.code}: {exc.message}",
+        },
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Trata erros de validação: retorna 400 para campos obrigatórios ausentes e 422 para dados inválidos."""
@@ -76,6 +96,15 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Garante que erros 500 não quebrem o cabeçalho CORS e retornem mensagem estruturada em JSON."""
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": f"Erro interno do servidor: {exc!s}"},
+    )
+
+
 app.include_router(usuario_router)
 app.include_router(restaurante_router)
 app.include_router(auth_router)
@@ -84,6 +113,7 @@ app.include_router(estoque_router)
 app.include_router(ficha_tecnica_router)
 app.include_router(mesa_router)
 app.include_router(pedido_router)
+app.include_router(delivery_router)
 
 from fastapi.staticfiles import StaticFiles
 
@@ -111,6 +141,15 @@ async def root_tracking_websocket(
 ):
     from src.controllers.PedidoController import handle_tracking_websocket
     await handle_tracking_websocket(websocket, idPedido, db)
+
+
+@app.websocket("/ws/waiters")
+async def root_waiters_websocket(
+    websocket: WebSocket,
+    db: Session = Depends(get_db),
+):
+    from src.controllers.PedidoController import handle_waiter_room_websocket
+    await handle_waiter_room_websocket(websocket, db)
 
 
 def getVarsEnv():
