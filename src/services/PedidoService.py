@@ -17,6 +17,8 @@ from src.schemas.DeliverySchema import DeliveryState
 from src.schemas.KdsNotificationSchema import OrderItemReadyEvent
 from src.schemas.PedidoSchema import PedidoCreate, PedidoItemCreate
 from src.services.PrioridadeKDS import calcular_pontuacao, eh_sobremesa
+from src.services.RF08Service import RF08Service, RF08ValidationResult
+from src.services.SessaoService import SessaoService
 
 STATUS_ITEM = ("Pendente", "Em preparo", "Pronto", "Entregue")
 
@@ -25,10 +27,23 @@ class PedidoService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create(self, dados: PedidoCreate, usuario: Usuario | None = None) -> dict:
+    def add_items_to_table(
+        self,
+        idMesa: uuid.UUID,
+        itens: list[PedidoItemCreate],
+        usuario: Usuario | None = None,
+        sessao_id: str | None = None,
+    ) -> dict:
+        """
+        Adição Universal e Concorrente (RF01):
+        Permite que tanto clientes (autoatendimento) quanto garçons adicionem itens à mesa.
+        Garante abertura automática da mesa e criação da comanda se for o primeiro item (RF01),
+        ou append na comanda existente de forma atômica e serializada.
+        """
         mesa = (
             self.db.query(Mesa)
-            .filter(Mesa.idMesa == dados.idMesa)
+            .filter(Mesa.idMesa == idMesa)
+            .with_for_update()
             .first()
         )
         if mesa is None:
@@ -45,26 +60,45 @@ class PedidoService:
 
         idRestaurante = usuario.idRestaurante if usuario else mesa.idRestaurante
         idGarcom = usuario.idUsuario if usuario else None
+        origem = "GARCOM" if usuario else "CLIENTE"
 
-        cardapios = self._validate_menu_items(
-            dados.itens, idRestaurante
-        )
+        cardapios = self._validate_menu_items(itens, idRestaurante)
 
         try:
-            pedido = Pedido.get_active_for_table(self.db, mesa.idMesa)
-            if pedido is None or pedido.status in ("Fechado", "Cancelado"):
+            # 1. Garante sessão ativa no banco (reutiliza ou abre nova conforme RF01/RF02)
+            sessao = SessaoService.abrir_mesa(self.db, mesa.idMesa)
+            sessao_id_final = sessao_id or str(sessao.idSessao)
+
+            # 2. Busca comanda ativa com lock pessimista
+            pedido = (
+                self.db.query(Pedido)
+                .filter(
+                    Pedido.idMesa == mesa.idMesa,
+                    Pedido.status.notin_(["Fechado", "Cancelado"]),
+                )
+                .with_for_update()
+                .first()
+            )
+
+            rf01_aplicado = False
+            if pedido is None:
+                # RF01: Primeiro item cria a comanda e abre a mesa
+                rf01_aplicado = True
                 pedido = Pedido.create(
                     db=self.db,
                     idRestaurante=idRestaurante,
                     idMesa=mesa.idMesa,
                     idGarcom=idGarcom,
-                    sessao_id=dados.sessao_id,
+                    sessao_id=sessao_id_final,
+                    status="Aberto",
                     commit=False,
                 )
+                mesa.status = "Indisponivel"
             elif idGarcom and pedido.idGarcom is None:
                 pedido.idGarcom = idGarcom
 
-            itens = [
+            # 3. Adiciona os itens à comanda unificada
+            novos_itens = [
                 ItemPedido.create(
                     db=self.db,
                     idPedido=pedido.idPedido,
@@ -73,33 +107,61 @@ class PedidoService:
                     precoUnitario=float(cardapio.preco),
                     observacao=item.observacao,
                     categoria=cardapio.categoria,
-                    liberadoParaPreparo=not eh_sobremesa(
-                        cardapio.categoria
-                    ),
+                    liberadoParaPreparo=not eh_sobremesa(cardapio.categoria),
+                    origem=origem,
                     commit=False,
                 )
-                for item, cardapio in zip(
-                    dados.itens, cardapios, strict=True
-                )
+                for item, cardapio in zip(itens, cardapios, strict=True)
             ]
+
+            # 4. Reavalia RF08 imediatamente
+            rf08_res = RF08Service.reavaliar_comanda(self.db, pedido)
 
             self.db.commit()
             self.db.refresh(pedido)
+            self.db.refresh(mesa)
 
-            for item in itens:
+            for item in novos_itens:
                 self.db.refresh(item)
 
         except Exception:
             self.db.rollback()
             raise
 
+        events = [
+            self._event_data("item.created", pedido, item)
+            for item in novos_itens
+        ]
+
+        serialized_itens = [self._item_data(item) for item in novos_itens]
+
         return {
-            "pedido": self._pedido_data(pedido),
-            "itens": [self._item_data(item) for item in itens],
-            "events": [
-                self._event_data("item.created", pedido, item)
-                for item in itens
-            ],
+            "rf01Aplicado": rf01_aplicado,
+            "origemAdicao": origem,
+            "mesa": {
+                "idMesa": str(mesa.idMesa),
+                "numero": mesa.numero,
+                "status": mesa.status,
+            },
+            "comanda": self._pedido_data(pedido, rf08_res),
+            "itens": serialized_itens,
+            "itensAdicionados": serialized_itens,
+            "events": events,
+        }
+
+    def create(self, dados: PedidoCreate, usuario: Usuario | None = None) -> dict:
+        """Compatibilidade com POST /pedidos original delegando para add_items_to_table."""
+        result = self.add_items_to_table(
+            idMesa=dados.idMesa,
+            itens=dados.itens,
+            usuario=usuario,
+            sessao_id=dados.sessao_id,
+        )
+        return {
+            "pedido": result["comanda"],
+            "itens": result["itens"],
+            "events": result["events"],
+            "rf01Aplicado": result["rf01Aplicado"],
         }
 
     def add_items(
@@ -110,9 +172,8 @@ class PedidoService:
     ) -> dict:
         pedido = self._get_assigned_order(idPedido, usuario)
         idRestaurante = usuario.idRestaurante if usuario else pedido.idRestaurante
-        cardapios = self._validate_menu_items(
-            itens, idRestaurante
-        )
+        cardapios = self._validate_menu_items(itens, idRestaurante)
+        origem = "GARCOM" if usuario else "CLIENTE"
 
         try:
             novos_itens = [
@@ -124,17 +185,18 @@ class PedidoService:
                     precoUnitario=float(cardapio.preco),
                     observacao=item.observacao,
                     categoria=cardapio.categoria,
-                    liberadoParaPreparo=not eh_sobremesa(
-                        cardapio.categoria
-                    ),
+                    liberadoParaPreparo=not eh_sobremesa(cardapio.categoria),
+                    origem=origem,
                     commit=False,
                 )
-                for item, cardapio in zip(
-                    itens, cardapios, strict=True
-                )
+                for item, cardapio in zip(itens, cardapios, strict=True)
             ]
 
+            # Reavalia regra de negócio RF08
+            rf08_res = RF08Service.reavaliar_comanda(self.db, pedido)
+
             self.db.commit()
+            self.db.refresh(pedido)
 
             for item in novos_itens:
                 self.db.refresh(item)
@@ -145,10 +207,157 @@ class PedidoService:
 
         return {
             "itens": [self._item_data(item) for item in novos_itens],
+            "comanda": self._pedido_data(pedido, rf08_res),
             "events": [
                 self._event_data("item.created", pedido, item)
                 for item in novos_itens
             ],
+        }
+
+    def remover_item_comanda(
+        self,
+        idPedido: uuid.UUID,
+        idItemPedido: uuid.UUID,
+        usuario: Usuario,
+        motivo: str | None = None,
+    ) -> dict:
+        """
+        Remoção em Tempo Real:
+        Permite ao garçom remover um item de uma comanda em aberto.
+        Atualiza o banco e notifica o KDS e a equipe via WebSocket.
+        Reavalia RF08 garantindo consistência de Zero Pendências.
+        """
+        pedido = (
+            self.db.query(Pedido)
+            .filter(
+                Pedido.idPedido == idPedido,
+                Pedido.idRestaurante == usuario.idRestaurante,
+            )
+            .with_for_update()
+            .first()
+        )
+        if pedido is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Pedido não encontrado neste restaurante.",
+            )
+
+        if pedido.status in ("Fechado", "Cancelado"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível remover item de um pedido encerrado ou cancelado.",
+            )
+
+        item = (
+            self.db.query(ItemPedido)
+            .filter(
+                ItemPedido.idItemPedido == idItemPedido,
+                ItemPedido.idPedido == idPedido,
+            )
+            .with_for_update()
+            .first()
+        )
+        if item is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do pedido não encontrado.",
+            )
+
+        if item.status == "Cancelado":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="O item já está cancelado.",
+            )
+
+        if item.status == "Entregue":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível remover item que já foi entregue.",
+            )
+
+        try:
+            status_anterior = item.status
+            item.update_stats(self.db, "Cancelado", commit=False)
+            if motivo:
+                item.observacao = f"{item.observacao or ''} [Cancelado: {motivo}]".strip()
+
+            rf08_res = RF08Service.reavaliar_comanda(self.db, pedido)
+
+            self.db.commit()
+            self.db.refresh(item)
+            self.db.refresh(pedido)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        event = self._event_data("item.removed", pedido, item)
+
+        return {
+            "item": self._item_data(item),
+            "comanda": self._pedido_data(pedido, rf08_res),
+            "statusAnterior": status_anterior,
+            "statusAtual": item.status,
+            "removidoPor": str(usuario.idUsuario),
+            "events": [event],
+        }
+
+    def assumir_entrega(
+        self,
+        idPedido: uuid.UUID,
+        usuario: Usuario,
+    ) -> dict:
+        """
+        API de Assumir Entrega (RF08):
+        Exige estritamente Zero Pendências na comanda antes de permitir ao garçom assumir.
+        """
+        pedido = (
+            self.db.query(Pedido)
+            .filter(
+                Pedido.idPedido == idPedido,
+                Pedido.idRestaurante == usuario.idRestaurante,
+            )
+            .with_for_update()
+            .first()
+        )
+        if pedido is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Pedido não encontrado neste restaurante.",
+            )
+
+        if pedido.status in ("Fechado", "Cancelado"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível assumir entrega de pedido encerrado ou cancelado.",
+            )
+
+        # Validação RF08 (Zero Pendências)
+        rf08_res = RF08Service.exigir_zero_pendencias(self.db, pedido)
+
+        try:
+            pedido.idGarcom = usuario.idUsuario
+            pedido.status = "EmEntrega"
+            self.db.commit()
+            self.db.refresh(pedido)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        event = {
+            "type": "order.delivery_assumed",
+            "restaurantId": pedido.idRestaurante,
+            "assignedWaiterId": pedido.idGarcom,
+            "item": {
+                "idPedido": str(pedido.idPedido),
+                "status": pedido.status,
+                "assumidoPor": str(usuario.idUsuario),
+            },
+        }
+
+        return {
+            "comanda": self._pedido_data(pedido, rf08_res),
+            "assumidoPor": str(usuario.idUsuario),
+            "events": [event],
         }
 
     def get_order(self, idPedido: uuid.UUID) -> dict:
@@ -164,6 +373,7 @@ class PedidoService:
             .order_by(ItemPedido.dataCriacao.asc())
             .all()
         )
+        rf08_res = RF08Service.reavaliar_comanda(self.db, pedido)
         total = sum(
             float(it.precoUnitario) * it.quantidade
             for it in itens
@@ -181,7 +391,7 @@ class PedidoService:
         total_pago = sum(p["valor"] for p in pagamentos)
         saldo_restante = max(0.0, round(total - total_pago, 2))
         return {
-            "pedido": self._pedido_data(pedido),
+            "pedido": self._pedido_data(pedido, rf08_res),
             "itens": [self._item_data(item) for item in itens],
             "total": round(total, 2),
             "pagamentos": pagamentos,
@@ -306,6 +516,9 @@ class PedidoService:
 
         try:
             item.update_stats(self.db, novo_status, commit=False)
+            # Reavalia RF08 sempre que status avança no KDS
+            RF08Service.reavaliar_comanda(self.db, pedido)
+
             if novo_status == "Pronto":
                 item.deliveryStatus = DeliveryState.WAITING_DELIVERY_PICKUP.value
                 existing_entrega = (
@@ -395,6 +608,7 @@ class PedidoService:
         try:
             if nova_quantidade <= 0:
                 item.update_stats(self.db, "Cancelado", commit=False)
+                RF08Service.reavaliar_comanda(self.db, pedido)
             else:
                 item.quantidade = nova_quantidade
 
@@ -466,6 +680,7 @@ class PedidoService:
 
         try:
             item.liberadoParaPreparo = True
+            RF08Service.reavaliar_comanda(self.db, pedido)
             self.db.commit()
             self.db.refresh(item)
             self.db.refresh(pedido)
@@ -529,6 +744,7 @@ class PedidoService:
 
         try:
             item.update_stats(self.db, "Cancelado", commit=False)
+            RF08Service.reavaliar_comanda(self.db, pedido)
             self.db.commit()
             self.db.refresh(item)
             self.db.refresh(pedido)
@@ -556,11 +772,6 @@ class PedidoService:
             )
         )
 
-        if usuario.funcao == "Garcom":
-            query = query.filter(
-                Pedido.idGarcom == usuario.idUsuario
-            )
-
         rows = query.all()
         items = [self._item_data(item) for item, _ in rows]
 
@@ -584,12 +795,13 @@ class PedidoService:
             if domain_event is not None:
                 await domain_event_bus.publish(domain_event)
 
-            await realtime_hub.publish_item_event(
-                event_type=event["type"],
-                restaurant_id=event["restaurantId"],
-                item_data=event["item"],
-                assigned_waiter_id=event["assignedWaiterId"],
-            )
+            if "item" in event and "restaurantId" in event:
+                await realtime_hub.publish_item_event(
+                    event_type=event["type"],
+                    restaurant_id=event["restaurantId"],
+                    item_data=event["item"],
+                    assigned_waiter_id=event.get("assignedWaiterId"),
+                )
 
     def _get_assigned_order(
         self,
@@ -600,7 +812,7 @@ class PedidoService:
         if usuario is not None and getattr(usuario, "idRestaurante", None):
             query = query.filter(Pedido.idRestaurante == usuario.idRestaurante)
 
-        pedido = query.first()
+        pedido = query.with_for_update().first()
 
         if pedido is None:
             raise HTTPException(
@@ -655,8 +867,8 @@ class PedidoService:
         )
 
     @staticmethod
-    def _pedido_data(pedido: Pedido) -> dict:
-        return {
+    def _pedido_data(pedido: Pedido, resultado_rf08: RF08ValidationResult | None = None) -> dict:
+        data = {
             "idPedido": pedido.idPedido,
             "sessao_id": pedido.sessao_id,
             "idRestaurante": pedido.idRestaurante,
@@ -664,6 +876,13 @@ class PedidoService:
             "idGarcom": pedido.idGarcom,
             "status": pedido.status,
         }
+        if resultado_rf08 is not None:
+            data.update({
+                "possuiPendencias": resultado_rf08.possui_pendencias,
+                "elegivelAssumirEntrega": resultado_rf08.elegivel_assumir_entrega,
+                "itensPendentesCount": resultado_rf08.itens_pendentes_count,
+            })
+        return data
 
     @staticmethod
     def _item_data(item: ItemPedido) -> dict:
@@ -682,6 +901,7 @@ class PedidoService:
             if (item.pedido and item.pedido.mesa)
             else None
         )
+        origem = getattr(item, "origem", "CLIENTE")
 
         return {
             "idItemPedido": str(item.idItemPedido),
@@ -697,6 +917,7 @@ class PedidoService:
             "prioridade": item.prioridade,
             "dataCriacao": data_criacao.isoformat(),
             "liberadoParaPreparo": item.liberadoParaPreparo,
+            "origem": origem,
             "tempoEsperaMinutos": tempo_espera,
             "pontuacao": pontuacao,
             "tempoPreparo": tempo_preparo_item or 15,

@@ -17,6 +17,15 @@ class PedidoCreate(BaseModel):
     itens: list[PedidoItemCreate] = Field(min_length=1)
 
 
+class AdicionarItensMesaRequest(BaseModel):
+    sessao_id: str | None = None
+    itens: list[PedidoItemCreate] = Field(min_length=1)
+
+
+class RemoverItemRequest(BaseModel):
+    motivo: str | None = None
+
+
 class ItemPedidoStatusUpdate(BaseModel):
     status: Literal["Pendente", "Em preparo", "Pronto", "Entregue"]
 
@@ -44,6 +53,7 @@ class ItemResponseSchema(BaseModel):
     observacao: str | None
     categoria: str | None = None
     prioridade: int = 1
+    origem: str = "CLIENTE"
 
     model_config = ConfigDict(from_attributes=True)
 

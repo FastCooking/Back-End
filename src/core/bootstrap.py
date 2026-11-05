@@ -100,6 +100,7 @@ def garantir_usuario_admin(db: Session | None = None) -> Usuario | None:
         if close_session:
             db.close()
 
+
 def executar_migracoes_seguras(db: Session | None = None) -> None:
     """Aplica migrações DDL seguras (colunas novas com IF NOT EXISTS) de forma idempotente."""
     close_session = False
@@ -116,26 +117,32 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'Pedido'
                     ) THEN
-                        ALTER TABLE "Pedido" 
-                        ADD COLUMN IF NOT EXISTS "idUsuarioFechamento" UUID 
-                        REFERENCES "Usuarios"("idUsuario") 
+                        ALTER TABLE "Pedido"
+                        ADD COLUMN IF NOT EXISTS "idUsuarioFechamento" UUID
+                        REFERENCES "Usuarios"("idUsuario")
                         ON UPDATE CASCADE ON DELETE SET NULL;
                     END IF;
 
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'Cardapio'
                     ) THEN
-                        ALTER TABLE "Cardapio" 
+                        ALTER TABLE "Cardapio"
                         ADD COLUMN IF NOT EXISTS "tempoPreparo" INTEGER NOT NULL DEFAULT 15;
+                    END IF;
+
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables WHERE table_name = 'ItemPedido'
+                    ) THEN
+                        ALTER TABLE "ItemPedido"
+                        ADD COLUMN IF NOT EXISTS "origem" VARCHAR(20) NOT NULL DEFAULT 'CLIENTE';
                     END IF;
                 END $$;
             """))
             db.commit()
             logger.info("Migrações seguras executadas com sucesso.")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         db.rollback()
         logger.warning("Aviso durante migrações automáticas: %s", str(e))
     finally:
         if close_session:
             db.close()
-

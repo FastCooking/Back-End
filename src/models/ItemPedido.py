@@ -83,6 +83,13 @@ class ItemPedido(Base):
         cascade="all, delete-orphan",
     )
 
+    origem: str = Column(
+        String(20),
+        nullable=False,
+        default="CLIENTE",
+        server_default=text("'CLIENTE'"),
+    )
+
     def __repr__(self):
         return f"<ItemPedido(id={self.idItemPedido}, pedido={self.idPedido}, cardapio={self.idCardapio}, status='{self.status}')>"
 
@@ -99,6 +106,7 @@ class ItemPedido(Base):
         categoria: str | None = None,
         prioridade: int = 1,
         liberadoParaPreparo: bool = True,
+        origem: str = "CLIENTE",
         commit: bool = True,
     ) -> "ItemPedido":
         """Cria e persiste um novo item de pedido."""
@@ -112,6 +120,7 @@ class ItemPedido(Base):
             categoria=categoria,
             prioridade=prioridade,
             liberadoParaPreparo=liberadoParaPreparo,
+            origem=origem,
         )
         db.add(item)
         if commit:

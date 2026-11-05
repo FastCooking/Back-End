@@ -3,22 +3,36 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Response,
+    WebSocket,
+)
 from fastapi import status as http_status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocketDisconnect
+from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.core.realtime import realtime_hub
 from src.core.security import decodificar_token, exigir_funcao, get_user_from_token
 from src.database.connection import get_db
+from src.models.Mesa import Mesa
+from src.models.Pagamento import Pagamento
+from src.models.Pedido import Pedido
+from src.models.Sessao import Sessao
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
+    AdicionarItensMesaRequest,
     ItemPedidoQuantidadeUpdate,
     ItemPedidoStatusUpdate,
     PedidoCreate,
     PedidoItemCreate,
+    RemoverItemRequest,
 )
 from src.services.PedidoService import PedidoService
 
@@ -37,6 +51,31 @@ def get_optional_user(
         return get_user_from_token(credenciais.credentials, db)
     except Exception:  # noqa: BLE001
         return None
+
+
+@router.post("/mesas/{idMesa}/itens")
+def adicionar_itens_mesa(
+    idMesa: uuid.UUID,
+    dados: AdicionarItensMesaRequest,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(get_optional_user),
+) -> dict:
+    service = PedidoService(db)
+    result = service.add_items_to_table(
+        idMesa=idMesa,
+        itens=dados.itens,
+        usuario=usuario,
+        sessao_id=dados.sessao_id,
+    )
+    if result.get("rf01Aplicado"):
+        response.status_code = http_status.HTTP_201_CREATED
+    else:
+        response.status_code = http_status.HTTP_200_OK
+
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
 
 
 @router.post("", status_code=http_status.HTTP_201_CREATED)
@@ -62,6 +101,35 @@ def adicionar_itens_ao_pedido(
 ) -> dict:
     service = PedidoService(db)
     result = service.add_items(idPedido, itens, usuario)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
+@router.delete("/{idPedido}/itens/{idItemPedido}")
+def remover_item_pedido(
+    idPedido: uuid.UUID,
+    idItemPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    dados: RemoverItemRequest | None = None,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    motivo = dados.motivo if dados else None
+    result = service.remover_item_comanda(idPedido, idItemPedido, usuario, motivo)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
+@router.post("/{idPedido}/assumir-entrega")
+def assumir_entrega(
+    idPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    result = service.assumir_entrega(idPedido, usuario)
     background_tasks.add_task(service.publish_events, result.pop("events"))
     return result
 
@@ -186,14 +254,6 @@ def cancelar_item(
     return result
 
 
-from pydantic import BaseModel
-
-from src.models.Mesa import Mesa
-from src.models.Pagamento import Pagamento
-from src.models.Pedido import Pedido
-from src.models.Sessao import Sessao
-
-
 class PagamentoCreateRequest(BaseModel):
     formaPagamento: str
     valor: float | None = None
@@ -208,7 +268,6 @@ def registrar_pagamento(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
-    service = PedidoService(db)
     pedido = Pedido.get_by_id(db, idPedido)
     if not pedido or pedido.idRestaurante != usuario.idRestaurante:
         raise HTTPException(
@@ -261,7 +320,14 @@ def registrar_pagamento(
         if mesa:
             mesa.update(db, status="Disponivel", commit=False)
 
-        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status.in_(["Aberta", "Ativa"])).all()
+        sessoes_abertas = (
+            db.query(Sessao)
+            .filter(
+                Sessao.idMesa == pedido.idMesa,
+                Sessao.status.in_(["Aberta", "Ativa"]),
+            )
+            .all()
+        )
         for s in sessoes_abertas:
             s.status = "Fechada"
 
@@ -341,7 +407,11 @@ def registrar_pagamento(
         if mesa:
             mesa.update(db, status="Disponivel", commit=False)
 
-        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta").all()
+        sessoes_abertas = (
+            db.query(Sessao)
+            .filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta")
+            .all()
+        )
         for s in sessoes_abertas:
             s.status = "Fechada"
 

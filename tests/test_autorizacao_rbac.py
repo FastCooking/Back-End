@@ -34,7 +34,7 @@ Regras de negócio validadas:
 
 import os
 import sys
-import uuid
+
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -47,7 +47,6 @@ from src.models.Pedido import Pedido
 from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario
 from src.services.UsuarioService import hash_senha
-
 
 # =====================================================================
 # HELPERS
