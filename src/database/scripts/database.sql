@@ -72,7 +72,13 @@ CREATE TABLE IF NOT EXISTS "Pedido" (
     "idGarcom" UUID NULL REFERENCES "Usuarios"("idUsuario") ON UPDATE CASCADE ON DELETE SET NULL,
     "status" VARCHAR(30) NOT NULL DEFAULT 'Aberto' CHECK ("status" IN ('Aberto', 'Em preparo', 'Pronto', 'Entregue', 'Fechado', 'Cancelado')),
     "dataAbertura" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "dataFechamento" TIMESTAMP NULL
+    "dataFechamento" TIMESTAMP NULL,
+    "desconto" NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    "tipoDesconto" VARCHAR(20) NULL,
+    "valorDescontoInformado" NUMERIC(10, 2) NULL,
+    "motivoDesconto" VARCHAR(255) NULL,
+    "idGerenteDesconto" UUID NULL REFERENCES "Usuarios"("idUsuario") ON UPDATE CASCADE ON DELETE SET NULL,
+    "dataDesconto" TIMESTAMP NULL
 );
 
 CREATE TABLE IF NOT EXISTS "ItemPedido" (
@@ -93,6 +99,21 @@ CREATE TABLE IF NOT EXISTS "Pagamento" (
     "dataPagamento" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS "LogDesconto" (
+    "idLogDesconto" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "idRestaurante" UUID NOT NULL REFERENCES "Restaurante"("idRestaurante") ON UPDATE CASCADE ON DELETE CASCADE,
+    "idPedido" UUID NULL REFERENCES "Pedido"("idPedido") ON UPDATE CASCADE ON DELETE CASCADE,
+    "idUsuario" UUID NULL REFERENCES "Usuarios"("idUsuario") ON UPDATE CASCADE ON DELETE SET NULL,
+    "usuario" VARCHAR(255) NOT NULL,
+    "funcaoUsuario" VARCHAR(50) NULL,
+    "valorDesconto" NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    "tipoDesconto" VARCHAR(20) NULL,
+    "motivo" TEXT NULL,
+    "sucesso" BOOLEAN NOT NULL DEFAULT TRUE,
+    "motivoFalha" VARCHAR(255) NULL,
+    "dataHora" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- =====================================================================
 -- Índices para Performance de Consultas Frequentes
 -- =====================================================================
@@ -108,3 +129,6 @@ CREATE INDEX IF NOT EXISTS idx_FichaTecnica_Cardapio ON "FichaTecnica"("idCardap
 CREATE INDEX IF NOT EXISTS idx_FichaTecnica_Estoque ON "FichaTecnica"("idEstoque");
 
 CREATE INDEX IF NOT EXISTS idx_Pagamento_Pedido ON "Pagamento"("idPedido");
+
+CREATE INDEX IF NOT EXISTS idx_LogDesconto_Pedido ON "LogDesconto"("idPedido");
+CREATE INDEX IF NOT EXISTS idx_LogDesconto_Restaurante ON "LogDesconto"("idRestaurante");

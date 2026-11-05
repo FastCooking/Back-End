@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, func, text
+from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -44,6 +44,16 @@ class Pedido(Base):
         ForeignKey("Usuarios.idUsuario", onupdate="CASCADE", ondelete="SET NULL"),
         nullable=True,
     )
+    desconto: float = Column(Numeric(10, 2), nullable=False, default=0.0)
+    tipoDesconto: str | None = Column(String(20), nullable=True)
+    valorDescontoInformado: float | None = Column(Numeric(10, 2), nullable=True)
+    motivoDesconto: str | None = Column(String(255), nullable=True)
+    idGerenteDesconto: uuid.UUID | None = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Usuarios.idUsuario", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
+    dataDesconto: datetime | None = Column(DateTime, nullable=True)
 
     # Relacionamentos
     restaurante = relationship("Restaurante", back_populates="pedidos")
@@ -54,11 +64,17 @@ class Pedido(Base):
     usuario_fechamento = relationship(
         "Usuario", foreign_keys=[idUsuarioFechamento]
     )
+    gerente_desconto = relationship(
+        "Usuario", foreign_keys=[idGerenteDesconto]
+    )
     itens = relationship(
         "ItemPedido", back_populates="pedido", cascade="all, delete-orphan"
     )
     pagamentos = relationship(
         "Pagamento", back_populates="pedido", cascade="all, delete-orphan"
+    )
+    logs_desconto = relationship(
+        "LogDesconto", back_populates="pedido", cascade="all, delete-orphan"
     )
 
     def __repr__(self):
@@ -75,6 +91,9 @@ class Pedido(Base):
         idGarcom: uuid.UUID | str | None = None,
         sessao_id: str | None = None,
         status: str = "Aberto",
+        desconto: float = 0.0,
+        tipoDesconto: str | None = None,
+        motivoDesconto: str | None = None,
         commit: bool = True,
     ) -> "Pedido":
         """Cria e persiste um novo pedido/comanda."""
@@ -84,6 +103,9 @@ class Pedido(Base):
             idGarcom=idGarcom,
             sessao_id=sessao_id,
             status=status,
+            desconto=desconto,
+            tipoDesconto=tipoDesconto,
+            motivoDesconto=motivoDesconto,
         )
         db.add(pedido)
         if commit:
@@ -149,6 +171,12 @@ class Pedido(Base):
         idGarcom: uuid.UUID | str | None = None,
         status: str | None = None,
         dataFechamento: datetime | None = None,
+        desconto: float | None = None,
+        tipoDesconto: str | None = None,
+        valorDescontoInformado: float | None = None,
+        motivoDesconto: str | None = None,
+        idGerenteDesconto: uuid.UUID | str | None = None,
+        dataDesconto: datetime | None = None,
     ) -> "Pedido":
         """Atualiza os dados de um pedido."""
         if idGarcom is not None:
@@ -157,6 +185,18 @@ class Pedido(Base):
             self.status = status
         if dataFechamento is not None:
             self.dataFechamento = dataFechamento
+        if desconto is not None:
+            self.desconto = desconto
+        if tipoDesconto is not None:
+            self.tipoDesconto = tipoDesconto
+        if valorDescontoInformado is not None:
+            self.valorDescontoInformado = valorDescontoInformado
+        if motivoDesconto is not None:
+            self.motivoDesconto = motivoDesconto
+        if idGerenteDesconto is not None:
+            self.idGerenteDesconto = idGerenteDesconto
+        if dataDesconto is not None:
+            self.dataDesconto = dataDesconto
 
         db.commit()
         db.refresh(self)

@@ -12,6 +12,7 @@ from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
 from src.models.Usuario import Usuario
 from src.schemas.MesaSchema import MesaCreate, MesaResponse, MesaUpdate
+from src.schemas.PedidoSchema import DescontoApplyRequest
 from src.services.PedidoService import PedidoService
 from src.services.QrCodeService import QrCodeService
 from src.services.SessaoService import SessaoService
@@ -339,3 +340,26 @@ def obter_pedido_ativo_mesa(
         "idRestaurante": pedido.idRestaurante,
         "itens": detalhes.get("itens", []),
     }
+
+
+@router.post("/{idMesa}/desconto")
+def aplicar_desconto_mesa(
+    idMesa: UUID,
+    dados: DescontoApplyRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    """Aplica desconto na comanda ativa da mesa informada."""
+    pedido = Pedido.get_active_for_table(db, idMesa)
+    if not pedido:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhum pedido ativo encontrado para esta mesa.",
+        )
+    service = PedidoService(db)
+    result = service.aplicar_desconto(pedido.idPedido, dados, usuario)
+    if "event" in result:
+        event = result.pop("event")
+        background_tasks.add_task(realtime_hub.publish_event, usuario.idRestaurante, event)
+    return result

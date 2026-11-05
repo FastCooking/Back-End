@@ -15,6 +15,9 @@ from src.core.security import decodificar_token, exigir_funcao, get_user_from_to
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
+    DescontoApplyRequest,
+    DescontoRemoverRequest,
+    ItemCancelamentoRequest,
     ItemPedidoQuantidadeUpdate,
     ItemPedidoStatusUpdate,
     PedidoCreate,
@@ -177,13 +180,70 @@ def liberar_sobremesa(
 def cancelar_item(
     idItemPedido: uuid.UUID,
     background_tasks: BackgroundTasks,
+    dados: ItemCancelamentoRequest | None = None,
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
     service = PedidoService(db)
-    result = service.cancelar_item(idItemPedido, usuario)
+    motivo = (dados.justificativa or dados.motivo) if dados else None
+    result = service.cancelar_item(idItemPedido, usuario, motivo=motivo)
     background_tasks.add_task(service.publish_events, [result.pop("event")])
     return result
+
+@router.post("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
+@router.patch("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
+def aplicar_desconto_pedido(
+    idPedido: uuid.UUID,
+    dados: DescontoApplyRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    """Aplica desconto na comanda condicionado à autenticação de senha do gerente (RF13)."""
+    service = PedidoService(db)
+    result = service.aplicar_desconto(idPedido, dados, usuario)
+    if "event" in result:
+        event = result.pop("event")
+        background_tasks.add_task(realtime_hub.publish_event, usuario.idRestaurante, event)
+    return result
+
+
+@router.delete("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
+def remover_desconto_pedido(
+    idPedido: uuid.UUID,
+    dados: DescontoRemoverRequest | None = None,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    """Remove desconto concedido à comanda."""
+    service = PedidoService(db)
+    return service.remover_desconto(idPedido, dados, usuario)
+
+
+@router.get("/{idPedido}/desconto/logs")
+@router.get("/{idPedido}/logs-desconto")
+def obter_logs_desconto_pedido(
+    idPedido: uuid.UUID,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> list[dict]:
+    """Lista histórico e logs de tentativas e concessões de desconto no pedido."""
+    service = PedidoService(db)
+    return service.listar_logs_desconto(idPedido=idPedido, idRestaurante=usuario.idRestaurante)
+
+
+@router.get("/logs-desconto/restaurante")
+@router.get("/logs-desconto")
+def obter_logs_desconto_restaurante(
+    idRestaurante: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
+) -> list[dict]:
+    """Lista histórico e logs de tentativas e concessões de desconto no restaurante."""
+    service = PedidoService(db)
+    rest_id = usuario.idRestaurante if usuario.funcao != "Adm" else (idRestaurante or usuario.idRestaurante)
+    return service.listar_logs_desconto(idRestaurante=rest_id)
+
 
 
 from pydantic import BaseModel
@@ -244,15 +304,17 @@ def registrar_pagamento(
             "motivo": "Cancelado automaticamente no fechamento da comanda",
         })
 
-    # Calcula valor total considerando itens não cancelados
-    total_pedido = sum(
+    # Calcula valor total considerando itens não cancelados e desconto concedido
+    subtotal_pedido = sum(
         float(it.precoUnitario) * it.quantidade
         for it in pedido.itens
         if it.status != "Cancelado"
     )
+    desconto_pedido = float(getattr(pedido, "desconto", 0.0) or 0.0)
+    total_pedido = max(0.0, round(subtotal_pedido - desconto_pedido, 2))
 
     # Se nenhum item foi entregue/consumido e o total for zero (ou todos cancelados), não registra faturamento financeiro
-    if total_pedido <= 0:
+    if subtotal_pedido <= 0 and total_pedido <= 0:
         pedido.update_stats(db, "Cancelado", commit=False)
         pedido.dataFechamento = datetime.now()
         pedido.idUsuarioFechamento = usuario.idUsuario
@@ -384,7 +446,10 @@ def registrar_pagamento(
     return {
         "message": mensagem,
         "pedidoEncerrado": pedido_encerrado,
+        "subtotalPedido": float(subtotal_pedido),
+        "descontoPedido": float(desconto_pedido),
         "totalPedido": float(total_pedido),
+        "totalComDesconto": float(total_pedido),
         "totalPago": float(novo_total_pago),
         "saldoRestante": float(novo_saldo_restante),
         "pagamento": {
@@ -426,11 +491,11 @@ def listar_pedidos(
 
     for pedido in pedidos:
         itens_res = []
-        total = 0.0
+        total_itens = 0.0
         for it in pedido.itens:
             subtotal = float(it.precoUnitario) * it.quantidade
             if it.status != "Cancelado":
-                total += subtotal
+                total_itens += subtotal
             nome_item = it.cardapio.nome if it.cardapio else "Item do cardápio"
             itens_res.append({
                 "idItemPedido": str(it.idItemPedido),
@@ -468,7 +533,10 @@ def listar_pedidos(
             "idUsuarioFechamento": str(pedido.idUsuarioFechamento) if pedido.idUsuarioFechamento else None,
             "nomeUsuarioFechamento": nome_fechamento,
             "funcaoUsuarioFechamento": funcao_fechamento,
-            "total": round(total, 2),
+            "subtotal": round(total_itens, 2),
+            "desconto": round(float(getattr(pedido, "desconto", 0.0) or 0.0), 2),
+            "total": round(max(0.0, total_itens - float(getattr(pedido, "desconto", 0.0) or 0.0)), 2),
+            "totalComDesconto": round(max(0.0, total_itens - float(getattr(pedido, "desconto", 0.0) or 0.0)), 2),
             "itens": itens_res,
             "pagamentos": pagamentos_res,
         })
