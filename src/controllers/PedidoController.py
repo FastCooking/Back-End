@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, WebSocket
 from fastapi import status as http_status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocketDisconnect
@@ -13,9 +13,11 @@ from src.core.security import exigir_funcao, get_user_from_token
 from src.database.connection import get_db
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
+    AdicionarItensMesaRequest,
     ItemPedidoStatusUpdate,
     PedidoCreate,
     PedidoItemCreate,
+    RemoverItemRequest,
 )
 from src.services.PedidoService import PedidoService
 
@@ -37,6 +39,31 @@ def get_optional_user(
 
 
 @router.post("", status_code=http_status.HTTP_201_CREATED)
+@router.post("/mesas/{idMesa}/itens")
+def adicionar_itens_mesa(
+    idMesa: uuid.UUID,
+    dados: AdicionarItensMesaRequest,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(get_optional_user),
+) -> dict:
+    service = PedidoService(db)
+    result = service.add_items_to_table(
+        idMesa=idMesa,
+        itens=dados.itens,
+        usuario=usuario,
+        sessao_id=dados.sessao_id,
+    )
+    if result.get("rf01Aplicado"):
+        response.status_code = http_status.HTTP_201_CREATED
+    else:
+        response.status_code = http_status.HTTP_200_OK
+
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
 def criar_pedido(
     dados: PedidoCreate,
     background_tasks: BackgroundTasks,
@@ -64,6 +91,35 @@ def adicionar_itens_ao_pedido(
 
 
 @router.get("/{idPedido}")
+@router.delete("/{idPedido}/itens/{idItemPedido}")
+def remover_item_pedido(
+    idPedido: uuid.UUID,
+    idItemPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    dados: RemoverItemRequest | None = None,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    motivo = dados.motivo if dados else None
+    result = service.remover_item_comanda(idPedido, idItemPedido, usuario, motivo)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
+@router.post("/{idPedido}/assumir-entrega")
+def assumir_entrega(
+    idPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    result = service.assumir_entrega(idPedido, usuario)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
 def obter_pedido(
     idPedido: uuid.UUID,
     db: Session = Depends(get_db),

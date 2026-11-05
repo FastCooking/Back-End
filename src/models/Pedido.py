@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, func, text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -51,6 +51,16 @@ class Pedido(Base):
     )
     pagamentos = relationship(
         "Pagamento", back_populates="pedido", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_pedido_ativo_por_mesa",
+            "idMesa",
+            unique=True,
+            postgresql_where=text("status NOT IN ('Fechado', 'Cancelado')"),
+            sqlite_where=text('"status" NOT IN (\'Fechado\', \'Cancelado\')'),
+        ),
     )
 
     def __repr__(self):

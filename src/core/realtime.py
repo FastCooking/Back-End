@@ -212,7 +212,7 @@ class RealtimeHub:
                 elif subscription.role == "Garcom":
                     # RF06: If item is ready (Pronto), notify ALL waiters of the restaurant.
                     # Otherwise, notify the assigned waiter.
-                    if item_data.get("status") == "Pronto" or not assigned_waiter_id:
+                    if item_data.get("status") in ("Pronto", "Cancelado") or event_type in ("item.removed", "item.created") or not assigned_waiter_id:
                         recipient = True
                     else:
                         recipient = assigned_waiter_id == subscription.user_id
