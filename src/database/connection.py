@@ -24,6 +24,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # Importa os modelos para registrar as tabelas no metadata do SQLAlchemy.
+from src.models.AuditoriaCancelamentoItem import AuditoriaCancelamentoItem  # noqa: F401
 from src.models.Cardapio import Cardapio  # noqa: F401
 from src.models.Entrega import Entrega  # noqa: F401
 from src.models.Estoque import Estoque  # noqa: F401

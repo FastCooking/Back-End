@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from src.core.security import criar_token
+from src.models.AuditoriaCancelamentoItem import AuditoriaCancelamentoItem
 from src.models.Cardapio import Cardapio
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
@@ -247,7 +248,11 @@ def test_remocao_em_tempo_real_e_kds(client, cenario_completo, db_session):
     # Verifica persistência no banco
     item_db = db_session.query(ItemPedido).filter(ItemPedido.idItemPedido == uuid.UUID(id_item)).first()
     assert item_db.status == "Cancelado"
-    assert "Cliente desistiu" in (item_db.observacao or "")
+    auditoria = db_session.query(AuditoriaCancelamentoItem).filter_by(
+        idItemPedido=item_db.idItemPedido
+    ).one()
+    assert auditoria.motivo == "Cliente desistiu"
+    assert auditoria.origem == "GARCOM"
 
 
 def test_rf08_zero_pendencias_e_assumir_entrega(client, cenario_completo, db_session):
@@ -298,6 +303,7 @@ def test_rf08_zero_pendencias_e_assumir_entrega(client, cenario_completo, db_ses
     res_remocao = client.request(
         "DELETE",
         f"/pedidos/{id_pedido}/itens/{id_item_bebida}",
+        json={"motivo": "Cliente desistiu da bebida"},
         headers={"Authorization": f"Bearer {token_garcom}"},
     )
     assert res_remocao.status_code == 200

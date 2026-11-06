@@ -1,7 +1,7 @@
 # 🤖 AGENT.md — Guia de Engenharia e Contexto para Agentes de IA
 
-> **Atenção para Agentes de IA e Desenvolvedores:**  
-> Este documento é a **fonte primária de contexto, regras de negócio e arquitetura** do projeto **FastCooking (Back-End)**.  
+> **Atenção para Agentes de IA e Desenvolvedores:**
+> Este documento é a **fonte primária de contexto, regras de negócio e arquitetura** do projeto **FastCooking (Back-End)**.
 > Sempre que você (IA ou engenheiro humano) for realizar alterações, refatorações, criação de novas rotas ou manutenção neste repositório, **leia atentamente todas as diretrizes deste arquivo antes de executar qualquer código**.
 
 ---
@@ -62,7 +62,15 @@ O fluxo do item é linear e protegido contra saltos de estado inválidos:
   - `DELIVERED`: Todos os itens entregues.
   - `CANCELLED`: Todos os itens cancelados.
 
-### 2.4 Eventos em Tempo Real (`RealtimeHub` em `src/core/realtime.py`)
+### 2.4 Cancelamento de itens (RF11)
+- O cancelamento só é permitido enquanto o item está `Pendente`.
+- Cliente usa `POST /pedidos/itens/{idItemPedido}/cancelamento-cliente`, sem autenticação ou justificativa.
+- Garçom, gerente e administrador usam `PATCH /pedidos/itens/{idItemPedido}/cancelar`, autenticados por JWT e com justificativa obrigatória. Cozinheiro não pode cancelar.
+- Remoção legada e quantidade zero usam a mesma regra e a mesma auditoria persistente; quantidade zero exige justificativa de funcionário.
+- Pagamento/fechamento é bloqueado se ainda houver itens pendentes. Eles devem ser cancelados previamente pela RF11.
+- Cada cancelamento grava mesa, sessão do pedido, origem, data/hora e, para funcionários, usuário e motivo, na tabela `AuditoriaCancelamentoItem`.
+
+### 2.5 Eventos em Tempo Real (`RealtimeHub` em `src/core/realtime.py`)
 - O servidor mantém um hub em memória com conexões de dois tipos:
   1. **Staff WebSocket (`/pedidos/kds/ws` ou `/pedidos/ws`):** Cozinheiros e Garçons autenticados via token JWT enviado no primeiro frame:
      ```json
@@ -91,7 +99,7 @@ O sistema é estritamente **multi-tenant** isolado por restaurante (`idRestauran
 | :--- | :--- | :--- |
 | **Adm** | Global / Plataforma | Criação e gestão de estabelecimentos (`/restaurantes`), onboarding completo (`/restaurantes/com-usuario`), ativação/desativação, criação e edição de qualquer usuário. |
 | **Gerente** | Restaurante Local | Gestão completa do cardápio (`/cardapio`), insumos/estoque (`/insumos`), fichas técnicas (`/fichas-tecnica`), mesas e QR Codes (`/mesas`), consulta de histórico de vendas, e gestão de equipe local restrita a `Garcom` e `Cozinheiro`. |
-| **Garcom** | Restaurante Local | Abertura e acompanhamento de comandas (`/pedidos`), adição de novos itens na mesa, liberação de sobremesas, cancelamento de itens pendentes, fechamento de contas com registro de pagamento (`/pedidos/{idPedido}/pagamento`), atendimento de chamados de mesa. |
+| **Garcom** | Restaurante Local | Abertura e acompanhamento de comandas (`/pedidos`), adição de novos itens na mesa, liberação de sobremesas, cancelamento auditado de itens pendentes com justificativa, fechamento de contas com registro de pagamento (`/pedidos/{idPedido}/pagamento`), atendimento de chamados de mesa. |
 | **Cozinheiro** | Restaurante Local | Painel KDS em tempo real, visualização da fila com prioridade dinâmica, alteração sequencial de status dos itens (`Pendente` $\to$ `Em preparo` $\to$ `Pronto`), consulta de fichas técnicas e estoque. |
 | **Cliente** *(Público)* | Mesa Específica | Escaneamento de QR Code, autoatendimento, abertura de sessão de mesa, lançamento de pedidos diretos para a cozinha, chamada de garçom e tracking em tempo real. |
 
@@ -351,4 +359,3 @@ docker-compose up --build
 ```
 - Back-End: `http://localhost:8000` (Docs Swagger em `http://localhost:8000/docs`)
 - Front-End: `http://localhost:5173`
-

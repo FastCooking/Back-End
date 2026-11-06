@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demonstração | Cancelamento de item</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #17231f;
+      background: #f3f6f4;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; min-width: 320px; }
+
+    button, select, textarea { font: inherit; }
+
+    button { cursor: pointer; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 18px max(24px, calc((100vw - 1180px) / 2));
+      color: #fff;
+      background: #173c32;
+    }
+
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 750; }
+    .brand-mark {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border-radius: 11px;
+      background: #c6f36b;
+      color: #173c32;
+      font-size: 19px;
+    }
+
+    .demo-tag {
+      padding: 7px 11px;
+      border: 1px solid #6f8e83;
+      border-radius: 999px;
+      color: #e6f4ed;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    main { width: min(1180px, calc(100% - 40px)); margin: 38px auto 60px; }
+    .eyebrow { margin: 0 0 8px; color: #527268; font-size: 13px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 38px); letter-spacing: -.04em; }
+    .intro { max-width: 720px; margin: 12px 0 25px; color: #596a63; line-height: 1.6; }
+
+    .notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 11px;
+      margin: 0 0 24px;
+      padding: 14px 16px;
+      border: 1px solid #d5e6bd;
+      border-radius: 12px;
+      background: #f2f9e9;
+      color: #365226;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .notice strong { display: block; margin-bottom: 2px; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(340px, .9fr); gap: 22px; align-items: start; }
+    .stack { display: grid; gap: 20px; }
+    .card { border: 1px solid #e1e8e3; border-radius: 16px; background: #fff; box-shadow: 0 8px 26px #173c320a; }
+    .card-heading { padding: 20px 22px 0; }
+    .card-heading h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+    .card-heading p { margin: 6px 0 0; color: #718078; font-size: 13px; line-height: 1.5; }
+    .card-body { padding: 20px 22px 22px; }
+
+    .field-label { display: block; margin-bottom: 8px; color: #53645c; font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+    select, textarea {
+      width: 100%;
+      border: 1px solid #d9e2dc;
+      border-radius: 9px;
+      background: #fff;
+      color: #17231f;
+    }
+    select { min-height: 43px; padding: 0 12px; }
+    textarea { min-height: 100px; padding: 11px 12px; resize: vertical; }
+    select:focus, textarea:focus, button:focus-visible { outline: 3px solid #b9e878; outline-offset: 2px; }
+
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .order {
+      margin-top: 21px;
+      padding: 17px;
+      border: 1px solid #e7ece8;
+      border-radius: 12px;
+      background: #fbfcfb;
+    }
+    .order-top, .item-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .order-top { padding-bottom: 13px; border-bottom: 1px solid #e7ece8; color: #738078; font-size: 13px; }
+    .order-top strong { color: #273a31; }
+    .item-row { padding-top: 16px; }
+    .item-name { font-weight: 700; }
+    .item-description { margin-top: 4px; color: #718078; font-size: 13px; }
+    .status {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #fff3d4;
+      color: #805a00;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+    .status.active { background: #e4f2ff; color: #225d8d; }
+    .status.done { background: #e8f4e8; color: #37643b; }
+    .status.cancelled { background: #fce8e7; color: #a13831; }
+    .status-message {
+      min-height: 44px;
+      margin-top: 14px;
+      padding: 11px 12px;
+      border-radius: 9px;
+      background: #f2f5f3;
+      color: #57675f;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .status-message.blocked { background: #fff0ef; color: #9c3932; }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 17px; }
+    .button {
+      min-height: 42px;
+      padding: 0 15px;
+      border: 0;
+      border-radius: 9px;
+      font-weight: 750;
+    }
+    .button.primary { background: #bded67; color: #1d382b; }
+    .button.primary:hover:not(:disabled) { background: #a9de4d; }
+    .button.secondary { border: 1px solid #dce5df; background: #fff; color: #40534a; }
+    .button.danger { background: #a83b34; color: #fff; }
+    .button:disabled { cursor: not-allowed; opacity: .48; }
+
+    .check-list { display: grid; gap: 11px; margin: 0; padding: 0; list-style: none; }
+    .check-item { display: grid; grid-template-columns: 28px 1fr; gap: 11px; align-items: start; padding: 13px; border: 1px solid #e8ede9; border-radius: 11px; }
+    .check-icon { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: #eaf5df; color: #4a7626; font-weight: 800; }
+    .check-item strong { display: block; margin: 1px 0 4px; font-size: 13px; }
+    .check-item span:last-child { color: #708078; font-size: 12px; line-height: 1.5; }
+
+    .audit-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .count { padding: 4px 9px; border-radius: 999px; background: #eef3ef; color: #53675c; font-size: 12px; font-weight: 750; }
+    .table-wrap { overflow-x: auto; margin: 0 -2px; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { padding: 12px 9px; border-bottom: 1px solid #e4eae6; color: #76847d; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+    td { padding: 13px 9px; border-bottom: 1px solid #edf1ee; color: #41534a; font-size: 12px; vertical-align: top; }
+    td strong { color: #263a30; }
+    .empty { padding: 25px 10px; color: #7a8981; font-size: 13px; text-align: center; }
+    .audit-origin { display: inline-block; padding: 4px 7px; border-radius: 6px; background: #edf4ef; color: #3e604b; font-size: 10px; font-weight: 800; }
+    .footnote { margin: 13px 0 0; color: #7a8981; font-size: 11px; line-height: 1.5; }
+
+    dialog { width: min(440px, calc(100% - 32px)); padding: 0; border: 0; border-radius: 16px; box-shadow: 0 24px 80px #10271d40; }
+    dialog::backdrop { background: #13251db3; backdrop-filter: blur(2px); }
+    .dialog-content { padding: 24px; }
+    .dialog-content h2 { margin: 0; font-size: 21px; }
+    .dialog-content > p { margin: 9px 0 20px; color: #65756d; font-size: 14px; line-height: 1.55; }
+    .required { color: #a83b34; }
+    .dialog-actions { justify-content: flex-end; margin-top: 20px; }
+
+    @media (max-width: 780px) {
+      .layout { grid-template-columns: 1fr; }
+      .topbar { padding-right: 20px; padding-left: 20px; }
+      main { margin-top: 27px; }
+    }
+
+    @media (max-width: 480px) {
+      .demo-tag { max-width: 135px; text-align: center; }
+      .controls { grid-template-columns: 1fr; }
+      .card-heading, .card-body { padding-right: 17px; padding-left: 17px; }
+      .item-row { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">F</span><span>FastCooking</span></div>
+    <span class="demo-tag">Tela de demonstração</span>
+  </header>
+
+  <main>
+    <p class="eyebrow">Evidência visual · pedidos</p>
+    <h1>Cancelamento de item</h1>
+    <p class="intro">Demonstre as regras de cancelamento em um pedido de exemplo. Escolha quem está cancelando, confirme a ação e acompanhe o registro gerado.</p>
+
+    <div class="notice" role="note">
+      <span aria-hidden="true">ⓘ</span>
+      <div><strong>Modo demonstração</strong>Os dados desta tela são simulados no navegador; nenhuma alteração é enviada ou gravada na API.</div>
+    </div>
+
+    <div class="layout">
+      <div class="stack">
+        <section class="card" aria-labelledby="pedido-heading">
+          <div class="card-heading">
+            <h2 id="pedido-heading">Pedido de exemplo</h2>
+            <p>Altere o perfil e o status para demonstrar os diferentes cenários.</p>
+          </div>
+          <div class="card-body">
+            <div class="controls">
+              <div>
+                <label class="field-label" for="actor">Quem está cancelando?</label>
+                <select id="actor">
+                  <option value="CLIENTE">Cliente</option>
+                  <option value="GARCOM">Garçom</option>
+                  <option value="GERENTE">Gerente</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label" for="item-status">Status do item</label>
+                <select id="item-status">
+                  <option value="Pendente">Pendente</option>
+                  <option value="Em preparo">Em preparo</option>
+                  <option value="Pronto">Pronto</option>
+                  <option value="Cancelado">Cancelado</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="order">
+              <div class="order-top"><strong>Comanda #1048</strong><span>Mesa 12 · há 8 min</span></div>
+              <div class="item-row">
+                <div>
+                  <div class="item-name">Hambúrguer da casa</div>
+                  <div class="item-description">1 unidade · sem cebola</div>
+                </div>
+                <span id="status-badge" class="status">Pendente</span>
+              </div>
+              <div id="status-message" class="status-message">Item pendente: o cancelamento pode ser solicitado.</div>
+              <div class="actions">
+                <button id="cancel-button" class="button danger" type="button">Cancelar item</button>
+                <button id="reset-button" class="button secondary" type="button">Reiniciar demonstração</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="regras-heading">
+          <div class="card-heading">
+            <h2 id="regras-heading">Requisitos para aceite</h2>
+            <p>Comportamentos que esta demonstração permite visualizar.</p>
+          </div>
+          <div class="card-body">
+            <ul class="check-list">
+              <li class="check-item"><span class="check-icon" aria-hidden="true">1</span><span><strong>Bloqueio por status</strong><span>Quando o item deixa de estar pendente, a ação de cancelar fica bloqueada.</span></span></li>
+              <li class="check-item"><span class="check-icon" aria-hidden="true">2</span><span><strong>Cancelamento pelo cliente</strong><span>Exige somente confirmação; não solicita justificativa.</span></span></li>
+              <li class="check-item"><span class="check-icon" aria-hidden="true">3</span><span><strong>Cancelamento por funcionário</strong><span>Garçom e gerente precisam informar a justificativa antes de confirmar.</span></span></li>
+              <li class="check-item"><span class="check-icon" aria-hidden="true">4</span><span><strong>Registro de auditoria</strong><span>Cada cancelamento gera data e hora, origem, usuário quando aplicável e motivo.</span></span></li>
+            </ul>
+          </div>
+        </section>
+      </div>
+
+      <section class="card" aria-labelledby="auditoria-heading">
+        <div class="card-heading">
+          <div class="audit-head">
+            <h2 id="auditoria-heading">Log de cancelamentos</h2>
+            <span id="log-count" class="count">0 registros</span>
+          </div>
+          <p>Registro demonstrativo das ações realizadas nesta sessão.</p>
+        </div>
+        <div class="card-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Data / hora</th><th>Origem / usuário</th><th>Motivo</th></tr>
+              </thead>
+              <tbody id="audit-rows">
+                <tr><td class="empty" colspan="3">Nenhum cancelamento realizado nesta demonstração.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="footnote">No sistema real, este registro é persistido junto ao cancelamento do item.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="confirm-dialog" aria-labelledby="dialog-title">
+    <form id="confirm-form" class="dialog-content">
+      <h2 id="dialog-title">Confirmar cancelamento?</h2>
+      <p id="dialog-description"></p>
+      <div id="reason-field" hidden>
+        <label class="field-label" for="reason">Justificativa <span class="required">*</span></label>
+        <textarea id="reason" maxlength="500" placeholder="Informe o motivo do cancelamento"></textarea>
+      </div>
+      <div class="actions dialog-actions">
+        <button id="close-dialog" class="button secondary" type="button">Voltar</button>
+        <button id="confirm-button" class="button primary" type="submit">Confirmar cancelamento</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const actorSelect = document.querySelector("#actor");
+    const statusSelect = document.querySelector("#item-status");
+    const statusBadge = document.querySelector("#status-badge");
+    const statusMessage = document.querySelector("#status-message");
+    const cancelButton = document.querySelector("#cancel-button");
+    const dialog = document.querySelector("#confirm-dialog");
+    const dialogDescription = document.querySelector("#dialog-description");
+    const reasonField = document.querySelector("#reason-field");
+    const reasonInput = document.querySelector("#reason");
+    const confirmButton = document.querySelector("#confirm-button");
+    const auditRows = document.querySelector("#audit-rows");
+    const logCount = document.querySelector("#log-count");
+    const form = document.querySelector("#confirm-form");
+    let auditEntries = [];
+
+    const labels = {
+      CLIENTE: "Cliente",
+      GARCOM: "Garçom",
+      GERENTE: "Gerente"
+    };
+    const sampleUsers = {
+      GARCOM: "Ana Souza",
+      GERENTE: "Carlos Lima"
+    };
+
+    function updateStatus() {
+      const currentStatus = statusSelect.value;
+      statusBadge.textContent = currentStatus;
+      statusBadge.className = "status";
+      if (currentStatus === "Em preparo") statusBadge.classList.add("active");
+      if (currentStatus === "Pronto") statusBadge.classList.add("done");
+      if (currentStatus === "Cancelado") statusBadge.classList.add("cancelled");
+
+      const isPending = currentStatus === "Pendente";
+      cancelButton.disabled = !isPending;
+      statusMessage.classList.toggle("blocked", !isPending);
+      statusMessage.textContent = isPending
+        ? "Item pendente: o cancelamento pode ser solicitado."
+        : `Cancelamento bloqueado: o item está "${currentStatus}" e não está mais pendente.`;
+    }
+
+    function openConfirmation() {
+      const actor = actorSelect.value;
+      const isClient = actor === "CLIENTE";
+      document.querySelector("#dialog-title").textContent = isClient
+        ? "Confirmar cancelamento?"
+        : "Justificativa para cancelamento";
+      dialogDescription.textContent = isClient
+        ? "Deseja realmente cancelar este item? Não é necessário informar um motivo."
+        : `${labels[actor]}: informe a justificativa obrigatória antes de confirmar o cancelamento.`;
+      reasonField.hidden = isClient;
+      reasonInput.value = "";
+      confirmButton.disabled = !isClient;
+      dialog.showModal();
+      if (!isClient) reasonInput.focus();
+    }
+
+    function renderAudit() {
+      logCount.textContent = `${auditEntries.length} ${auditEntries.length === 1 ? "registro" : "registros"}`;
+      auditRows.replaceChildren();
+
+      if (!auditEntries.length) {
+        const row = auditRows.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 3;
+        cell.className = "empty";
+        cell.textContent = "Nenhum cancelamento realizado nesta demonstração.";
+        return;
+      }
+
+      for (const entry of [...auditEntries].reverse()) {
+        const row = auditRows.insertRow();
+        const dateCell = row.insertCell();
+        const date = document.createElement("strong");
+        date.textContent = entry.date;
+        dateCell.append(date);
+
+        const actorCell = row.insertCell();
+        const origin = document.createElement("span");
+        origin.className = "audit-origin";
+        origin.textContent = entry.actor;
+        actorCell.append(origin);
+        if (entry.user) {
+          const user = document.createElement("div");
+          user.style.marginTop = "5px";
+          user.textContent = `Usuário: ${entry.user}`;
+          actorCell.append(user);
+        }
+
+        const reasonCell = row.insertCell();
+        reasonCell.textContent = entry.reason || "—";
+      }
+    }
+
+    actorSelect.addEventListener("change", () => {
+      cancelButton.textContent = actorSelect.value === "CLIENTE"
+        ? "Cancelar como cliente"
+        : `Cancelar como ${labels[actorSelect.value].toLowerCase()}`;
+    });
+    statusSelect.addEventListener("change", updateStatus);
+    cancelButton.addEventListener("click", openConfirmation);
+    document.querySelector("#close-dialog").addEventListener("click", () => dialog.close());
+    reasonInput.addEventListener("input", () => {
+      confirmButton.disabled = !reasonInput.value.trim();
+    });
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const actor = actorSelect.value;
+      const reason = reasonInput.value.trim();
+      if (actor !== "CLIENTE" && !reason) {
+        reasonInput.focus();
+        return;
+      }
+
+      auditEntries.push({
+        date: new Intl.DateTimeFormat("pt-BR", {
+          dateStyle: "short",
+          timeStyle: "medium"
+        }).format(new Date()),
+        actor: labels[actor],
+        user: sampleUsers[actor] || null,
+        reason
+      });
+      statusSelect.value = "Cancelado";
+      updateStatus();
+      renderAudit();
+      dialog.close();
+    });
+
+    document.querySelector("#reset-button").addEventListener("click", () => {
+      statusSelect.value = "Pendente";
+      actorSelect.value = "CLIENTE";
+      auditEntries = [];
+      cancelButton.textContent = "Cancelar como cliente";
+      updateStatus();
+      renderAudit();
+    });
+
+    updateStatus();
+  </script>
+</body>
+</html>

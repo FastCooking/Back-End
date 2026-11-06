@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PedidoItemCreate(BaseModel):
@@ -23,7 +23,16 @@ class AdicionarItensMesaRequest(BaseModel):
 
 
 class RemoverItemRequest(BaseModel):
-    motivo: str | None = None
+    motivo: str = Field(..., min_length=1)
+
+    @field_validator("motivo")
+    @classmethod
+    def validar_motivo(cls, motivo: str) -> str:
+        return motivo.strip()
+
+
+class ConfirmacaoCancelamentoCliente(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class ItemPedidoStatusUpdate(BaseModel):
@@ -70,3 +79,9 @@ class PedidoResponseSchema(BaseModel):
 
 class ItemPedidoQuantidadeUpdate(BaseModel):
     quantidade: int = Field(..., ge=0, description="Nova quantidade do item (0 cancela o item)")
+    motivo: str | None = None
+
+    @field_validator("motivo")
+    @classmethod
+    def validar_motivo(cls, motivo: str | None) -> str | None:
+        return motivo.strip() if motivo is not None else None
