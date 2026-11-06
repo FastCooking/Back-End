@@ -53,7 +53,10 @@ def get_optional_user(
         return None
 
 
-@router.post("/mesas/{idMesa}/itens")
+@router.post(
+    "/mesas/{idMesa}/itens",
+    responses={400: {"description": "Item indisponível por falta de estoque."}},
+)
 def adicionar_itens_mesa(
     idMesa: uuid.UUID,
     dados: AdicionarItensMesaRequest,
@@ -78,7 +81,11 @@ def adicionar_itens_mesa(
     return result
 
 
-@router.post("", status_code=http_status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=http_status.HTTP_201_CREATED,
+    responses={400: {"description": "Item indisponível por falta de estoque."}},
+)
 def criar_pedido(
     dados: PedidoCreate,
     background_tasks: BackgroundTasks,
@@ -91,7 +98,11 @@ def criar_pedido(
     return result
 
 
-@router.post("/{idPedido}/itens", status_code=http_status.HTTP_201_CREATED)
+@router.post(
+    "/{idPedido}/itens",
+    status_code=http_status.HTTP_201_CREATED,
+    responses={400: {"description": "Item indisponível por falta de estoque."}},
+)
 def adicionar_itens_ao_pedido(
     idPedido: uuid.UUID,
     itens: list[PedidoItemCreate],
@@ -197,7 +208,13 @@ async def handle_tracking_websocket(
         await realtime_hub.disconnect_tracking(websocket)
 
 
-@router.patch("/itens/{idItemPedido}/status")
+@router.patch(
+    "/itens/{idItemPedido}/status",
+    responses={
+        400: {"description": "Item indisponível por falta de estoque."},
+        409: {"description": "Transição de status inválida."},
+    },
+)
 def alterar_status_item(
     idItemPedido: uuid.UUID,
     dados: ItemPedidoStatusUpdate,
@@ -241,7 +258,10 @@ def liberar_sobremesa(
     return result
 
 
-@router.patch("/itens/{idItemPedido}/cancelar")
+@router.patch(
+    "/itens/{idItemPedido}/cancelar",
+    responses={409: {"description": "O preparo do item já foi iniciado."}},
+)
 def cancelar_item(
     idItemPedido: uuid.UUID,
     background_tasks: BackgroundTasks,
