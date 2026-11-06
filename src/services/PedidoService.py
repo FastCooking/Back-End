@@ -1,6 +1,7 @@
 import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -9,6 +10,8 @@ from src.core.events import domain_event_bus
 from src.core.realtime import realtime_hub
 from src.models.Cardapio import Cardapio
 from src.models.Entrega import Entrega
+from src.models.Estoque import Estoque
+from src.models.FichaTecnica import FichaTecnica
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
@@ -62,9 +65,11 @@ class PedidoService:
         idGarcom = usuario.idUsuario if usuario else None
         origem = "GARCOM" if usuario else "CLIENTE"
 
-        cardapios = self._validate_menu_items(itens, idRestaurante)
-
         try:
+            cardapios = self._validate_menu_items(itens, idRestaurante)
+            self._validate_stock_availability(itens, cardapios, idRestaurante)
+            self._ensure_menu_items_active(cardapios)
+
             # 1. Garante sessão ativa no banco (reutiliza ou abre nova conforme RF01/RF02)
             sessao = SessaoService.abrir_mesa(self.db, mesa.idMesa)
             sessao_id_final = sessao_id or str(sessao.idSessao)
@@ -172,10 +177,13 @@ class PedidoService:
     ) -> dict:
         pedido = self._get_assigned_order(idPedido, usuario)
         idRestaurante = usuario.idRestaurante if usuario else pedido.idRestaurante
-        cardapios = self._validate_menu_items(itens, idRestaurante)
         origem = "GARCOM" if usuario else "CLIENTE"
 
         try:
+            cardapios = self._validate_menu_items(itens, idRestaurante)
+            self._validate_stock_availability(itens, cardapios, idRestaurante)
+            self._ensure_menu_items_active(cardapios)
+
             novos_itens = [
                 ItemPedido.create(
                     db=self.db,
@@ -515,6 +523,9 @@ class PedidoService:
             self._invalid_transition(item.status, novo_status)
 
         try:
+            if novo_status == "Em preparo":
+                self._debit_stock_for_item(item, pedido)
+
             item.update_stats(self.db, novo_status, commit=False)
             # Reavalia RF08 sempre que status avança no KDS
             RF08Service.reavaliar_comanda(self.db, pedido)
@@ -838,7 +849,6 @@ class PedidoService:
                 .filter(
                     Cardapio.idCardapio == item.idCardapio,
                     Cardapio.idRestaurante == idRestaurante,
-                    Cardapio.status.is_(True),
                 )
                 .first()
             )
@@ -852,6 +862,145 @@ class PedidoService:
             cardapios.append(cardapio)
 
         return cardapios
+
+    def _validate_stock_availability(
+        self,
+        itens: list[PedidoItemCreate],
+        cardapios: list[Cardapio],
+        idRestaurante: uuid.UUID,
+    ) -> None:
+        cardapio_ids = {cardapio.idCardapio for cardapio in cardapios}
+        fichas = (
+            self.db.query(FichaTecnica)
+            .filter(FichaTecnica.idCardapio.in_(cardapio_ids))
+            .order_by(FichaTecnica.idEstoque)
+            .all()
+        )
+        if not fichas:
+            return
+
+        fichas_por_cardapio: dict[uuid.UUID, list[FichaTecnica]] = {}
+        for ficha in fichas:
+            fichas_por_cardapio.setdefault(ficha.idCardapio, []).append(ficha)
+
+        necessidades: dict[uuid.UUID, Decimal] = {}
+        cardapios_por_insumo: dict[uuid.UUID, set[uuid.UUID]] = {}
+        for item, cardapio in zip(itens, cardapios, strict=True):
+            for ficha in fichas_por_cardapio.get(cardapio.idCardapio, []):
+                necessidade = Decimal(str(ficha.quantidadeNecessaria)) * item.quantidade
+                necessidades[ficha.idEstoque] = (
+                    necessidades.get(ficha.idEstoque, Decimal(0)) + necessidade
+                )
+                cardapios_por_insumo.setdefault(ficha.idEstoque, set()).add(
+                    cardapio.idCardapio
+                )
+
+        estoques_por_id = self._lock_stock_rows(idRestaurante, necessidades)
+        insumos_indisponiveis = self._missing_stock(
+            necessidades, estoques_por_id
+        )
+        if not insumos_indisponiveis:
+            return
+
+        cardapio_indisponivel = next(
+            (
+                cardapio
+                for cardapio in cardapios
+                if any(
+                    cardapio.idCardapio in cardapios_por_insumo[idEstoque]
+                    for idEstoque in insumos_indisponiveis
+                )
+            ),
+            cardapios[0],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Item do cardápio '{cardapio_indisponivel.nome}' indisponível "
+                "por falta de estoque."
+            ),
+        )
+
+    def _lock_stock_rows(
+        self,
+        idRestaurante: uuid.UUID,
+        necessidades: dict[uuid.UUID, Decimal],
+    ) -> dict[uuid.UUID, Estoque]:
+        estoques = (
+            self.db.query(Estoque)
+            .filter(
+                Estoque.idRestaurante == idRestaurante,
+                Estoque.idEstoque.in_(necessidades),
+            )
+            .order_by(Estoque.idEstoque)
+            .with_for_update()
+            .populate_existing()
+            .all()
+        )
+        return {estoque.idEstoque: estoque for estoque in estoques}
+
+    @staticmethod
+    def _missing_stock(
+        necessidades: dict[uuid.UUID, Decimal],
+        estoques_por_id: dict[uuid.UUID, Estoque],
+    ) -> set[uuid.UUID]:
+        return {
+            idEstoque
+            for idEstoque, quantidade_necessaria in necessidades.items()
+            if idEstoque not in estoques_por_id
+            or Decimal(str(estoques_por_id[idEstoque].quantidadeEstoque))
+            < quantidade_necessaria
+        }
+
+    @staticmethod
+    def _ensure_menu_items_active(cardapios: list[Cardapio]) -> None:
+        if any(not cardapio.status for cardapio in cardapios):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do cardápio não encontrado neste restaurante.",
+            )
+
+    def _debit_stock_for_item(self, item: ItemPedido, pedido: Pedido) -> None:
+        fichas = (
+            self.db.query(FichaTecnica)
+            .filter(FichaTecnica.idCardapio == item.idCardapio)
+            .order_by(FichaTecnica.idEstoque)
+            .all()
+        )
+        if not fichas:
+            return
+
+        quantidades_necessarias = {
+            ficha.idEstoque: Decimal(str(ficha.quantidadeNecessaria)) * item.quantidade
+            for ficha in fichas
+        }
+        estoques_por_id = self._lock_stock_rows(
+            pedido.idRestaurante, quantidades_necessarias
+        )
+        if self._missing_stock(quantidades_necessarias, estoques_por_id):
+            cardapio = self.db.query(Cardapio).filter(
+                Cardapio.idCardapio == item.idCardapio
+            ).first()
+            nome_cardapio = cardapio.nome if cardapio else "Item do cardápio"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Item do cardápio '{nome_cardapio}' indisponível por falta de estoque.",
+            )
+
+        cardapio = self.db.query(Cardapio).filter(
+            Cardapio.idCardapio == item.idCardapio
+        ).first()
+        for ficha in fichas:
+            estoque = estoques_por_id[ficha.idEstoque]
+            estoque.quantidadeEstoque = (
+                Decimal(str(estoque.quantidadeEstoque))
+                - quantidades_necessarias[ficha.idEstoque]
+            )
+            if cardapio is not None and (
+                Decimal(str(estoque.quantidadeEstoque))
+                < Decimal(str(ficha.quantidadeNecessaria))
+            ):
+                cardapio.status = False
 
     @staticmethod
     def _invalid_transition(
