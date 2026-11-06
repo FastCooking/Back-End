@@ -221,6 +221,7 @@ def test_nao_cancela_item_com_preparo_iniciado(
 
     response = client.patch(
         f"/pedidos/itens/{item.idItemPedido}/cancelar",
+        json={"motivo": "Teste de bloqueio após início do preparo"},
         headers={
             "Authorization": (
                 f"Bearer {criar_token(cenario['garcom'].idUsuario, cenario['garcom'].funcao, cenario['restaurante'].idRestaurante)}"

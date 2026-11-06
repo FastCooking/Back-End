@@ -263,6 +263,19 @@ def liberar_sobremesa(
     return result
 
 
+@router.post("/itens/{idItemPedido}/cancelamento-cliente")
+def cancelar_item_cliente(
+    idItemPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    confirmacao: ConfirmacaoCancelamentoCliente | None = Body(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    service = PedidoService(db)
+    result = service.cancelar_item(idItemPedido)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
 @router.patch(
     "/itens/{idItemPedido}/cancelar",
     responses={409: {"description": "O preparo do item já foi iniciado."}},
