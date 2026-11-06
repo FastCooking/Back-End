@@ -161,7 +161,7 @@ def getVarsEnv():
     varsEnv = {
         "DATABASE_URL": os.getenv("DATABASE_URL"),
         "BCRYPT_ROUNDS": os.getenv("BCRYPT_ROUNDS"),
-        "SERVER_PORT": os.getenv("SERVER_PORT"),
+        "SERVER_PORT": os.getenv("BACKEND_PORT") or os.getenv("SERVER_PORT"),
         "JWT_SECRET": os.getenv("JWT_SECRET"),
     }
 

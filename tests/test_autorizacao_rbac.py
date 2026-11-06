@@ -560,6 +560,13 @@ def test_garcom_acessa_atendimento_entregas_e_pagamentos(client, cenario_rbac):
     )
     assert resp_libera.status_code == 200
 
+    resp_cancela_sobremesa = client.patch(
+        f"/pedidos/itens/{id_item_sobremesa}/cancelar",
+        json={"motivo": "Cliente não deseja sobremesa"},
+        headers=headers,
+    )
+    assert resp_cancela_sobremesa.status_code == 200
+
     # 2. Cozinha avança item: Pendente -> Em preparo -> Pronto
     resp_prep = client.patch(
         f"/pedidos/itens/{id_item_prato}/status",

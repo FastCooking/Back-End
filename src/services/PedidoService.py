@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.core.events import domain_event_bus
 from src.core.realtime import realtime_hub
+from src.models.AuditoriaCancelamentoItem import AuditoriaCancelamentoItem
 from src.models.Cardapio import Cardapio
 from src.models.Entrega import Entrega
 from src.models.Estoque import Estoque
@@ -227,87 +228,14 @@ class PedidoService:
         idPedido: uuid.UUID,
         idItemPedido: uuid.UUID,
         usuario: Usuario,
-        motivo: str | None = None,
+        motivo: str,
     ) -> dict:
-        """
-        Remoção em Tempo Real:
-        Permite ao garçom remover um item de uma comanda em aberto.
-        Atualiza o banco e notifica o KDS e a equipe via WebSocket.
-        Reavalia RF08 garantindo consistência de Zero Pendências.
-        """
-        pedido = (
-            self.db.query(Pedido)
-            .filter(
-                Pedido.idPedido == idPedido,
-                Pedido.idRestaurante == usuario.idRestaurante,
-            )
-            .with_for_update()
-            .first()
+        return self.cancelar_item(
+            idItemPedido=idItemPedido,
+            usuario=usuario,
+            motivo=motivo,
+            idPedidoEsperado=idPedido,
         )
-        if pedido is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Pedido não encontrado neste restaurante.",
-            )
-
-        if pedido.status in ("Fechado", "Cancelado"):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Não é possível remover item de um pedido encerrado ou cancelado.",
-            )
-
-        item = (
-            self.db.query(ItemPedido)
-            .filter(
-                ItemPedido.idItemPedido == idItemPedido,
-                ItemPedido.idPedido == idPedido,
-            )
-            .with_for_update()
-            .first()
-        )
-        if item is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item do pedido não encontrado.",
-            )
-
-        if item.status == "Cancelado":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="O item já está cancelado.",
-            )
-
-        if item.status == "Entregue":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Não é possível remover item que já foi entregue.",
-            )
-
-        try:
-            status_anterior = item.status
-            item.update_stats(self.db, "Cancelado", commit=False)
-            if motivo:
-                item.observacao = f"{item.observacao or ''} [Cancelado: {motivo}]".strip()
-
-            rf08_res = RF08Service.reavaliar_comanda(self.db, pedido)
-
-            self.db.commit()
-            self.db.refresh(item)
-            self.db.refresh(pedido)
-        except Exception:
-            self.db.rollback()
-            raise
-
-        event = self._event_data("item.removed", pedido, item)
-
-        return {
-            "item": self._item_data(item),
-            "comanda": self._pedido_data(pedido, rf08_res),
-            "statusAnterior": status_anterior,
-            "statusAtual": item.status,
-            "removidoPor": str(usuario.idUsuario),
-            "events": [event],
-        }
 
     def assumir_entrega(
         self,
@@ -582,6 +510,7 @@ class PedidoService:
         idItemPedido: uuid.UUID,
         nova_quantidade: int,
         usuario: Usuario,
+        motivo: str | None = None,
     ) -> dict:
         item = (
             self.db.query(ItemPedido)
@@ -616,12 +545,15 @@ class PedidoService:
                 detail=f"Não é possível alterar a quantidade do item pois o preparo já foi iniciado (status atual: '{item.status}').",
             )
 
+        if nova_quantidade == 0:
+            return self.cancelar_item(
+                idItemPedido=idItemPedido,
+                usuario=usuario,
+                motivo=motivo,
+            )
+
         try:
-            if nova_quantidade <= 0:
-                item.update_stats(self.db, "Cancelado", commit=False)
-                RF08Service.reavaliar_comanda(self.db, pedido)
-            else:
-                item.quantidade = nova_quantidade
+            item.quantidade = nova_quantidade
 
             self.db.commit()
             self.db.refresh(item)
@@ -632,11 +564,7 @@ class PedidoService:
 
         return {
             "item": self._item_data(item),
-            "event": self._event_data(
-                "item.quantity_changed" if nova_quantidade > 0 else "item.status_changed",
-                pedido,
-                item,
-            ),
+            "events": [self._event_data("item.quantity_changed", pedido, item)],
         }
 
     def liberar_sobremesa(
@@ -712,8 +640,32 @@ class PedidoService:
     def cancelar_item(
         self,
         idItemPedido: uuid.UUID,
-        usuario: Usuario,
+        usuario: Usuario | None = None,
+        motivo: str | None = None,
+        idPedidoEsperado: uuid.UUID | None = None,
     ) -> dict:
+        origem_por_funcao = {
+            "Garcom": "GARCOM",
+            "Gerente": "GERENTE",
+            "Adm": "ADM",
+        }
+        if usuario is None:
+            origem = "CLIENTE"
+            motivo = None
+        else:
+            origem = origem_por_funcao.get(usuario.funcao)
+            if origem is None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Você não tem permissão para cancelar itens.",
+                )
+            if not motivo or not motivo.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="A justificativa é obrigatória para cancelamento por funcionário.",
+                )
+            motivo = motivo.strip()
+
         item = (
             self.db.query(ItemPedido)
             .filter(ItemPedido.idItemPedido == idItemPedido)
@@ -729,7 +681,15 @@ class PedidoService:
 
         pedido = Pedido.get_by_id(self.db, item.idPedido)
 
-        if pedido is None or pedido.idRestaurante != usuario.idRestaurante:
+        if (
+            pedido is None
+            or item.idPedido != pedido.idPedido
+            or (idPedidoEsperado is not None and pedido.idPedido != idPedidoEsperado)
+            or (
+                usuario is not None
+                and pedido.idRestaurante != usuario.idRestaurante
+            )
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Item do pedido não encontrado.",
@@ -754,8 +714,38 @@ class PedidoService:
             )
 
         try:
-            item.update_stats(self.db, "Cancelado", commit=False)
-            RF08Service.reavaliar_comanda(self.db, pedido)
+            status_anterior = item.status
+            atualizados = (
+                self.db.query(ItemPedido)
+                .filter(
+                    ItemPedido.idItemPedido == idItemPedido,
+                    ItemPedido.idPedido == pedido.idPedido,
+                    ItemPedido.status == "Pendente",
+                )
+                .update(
+                    {ItemPedido.status: "Cancelado"},
+                    synchronize_session=False,
+                )
+            )
+            if atualizados != 1:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="O item deixou de estar pendente e não pode ser cancelado.",
+                )
+
+            self.db.expire(item, ["status"])
+            auditoria = AuditoriaCancelamentoItem(
+                idItemPedido=item.idItemPedido,
+                idPedido=pedido.idPedido,
+                idMesa=pedido.idMesa,
+                sessao_id=pedido.sessao_id,
+                origem=origem,
+                idUsuario=usuario.idUsuario if usuario else None,
+                motivo=motivo,
+            )
+            self.db.add(auditoria)
+            rf08_res = RF08Service.reavaliar_comanda(self.db, pedido)
+            self.db.flush()
             self.db.commit()
             self.db.refresh(item)
             self.db.refresh(pedido)
@@ -765,9 +755,13 @@ class PedidoService:
 
         return {
             "item": self._item_data(item),
-            "event": self._event_data(
-                "item.status_changed", pedido, item
-            ),
+            "comanda": self._pedido_data(pedido, rf08_res),
+            "statusAnterior": status_anterior,
+            "statusAtual": item.status,
+            "origemCancelamento": origem,
+            "canceladoPor": str(usuario.idUsuario) if usuario else None,
+            "idAuditoria": str(auditoria.idAuditoria),
+            "events": [self._event_data("item.status_changed", pedido, item)],
         }
 
     def queue_snapshot(self, usuario: Usuario) -> dict:

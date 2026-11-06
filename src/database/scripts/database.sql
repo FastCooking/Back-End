@@ -85,6 +85,30 @@ CREATE TABLE IF NOT EXISTS "ItemPedido" (
     "observacao" TEXT
 );
 
+CREATE TABLE IF NOT EXISTS "AuditoriaCancelamentoItem" (
+    "idAuditoria" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "idItemPedido" UUID NOT NULL REFERENCES "ItemPedido"("idItemPedido") ON UPDATE CASCADE ON DELETE RESTRICT,
+    "idPedido" UUID NOT NULL REFERENCES "Pedido"("idPedido") ON UPDATE CASCADE ON DELETE RESTRICT,
+    "idMesa" UUID NOT NULL REFERENCES "Mesa"("idMesa") ON UPDATE CASCADE ON DELETE RESTRICT,
+    "sessao_id" VARCHAR(100) NULL,
+    "origem" VARCHAR(20) NOT NULL CHECK ("origem" IN ('CLIENTE', 'GARCOM', 'GERENTE', 'ADM')),
+    "idUsuario" UUID NULL,
+    "motivo" TEXT NULL,
+    "dataHora" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_auditoria_cancelamento_responsavel_motivo CHECK (
+        ("origem" = 'CLIENTE' AND "idUsuario" IS NULL AND "motivo" IS NULL)
+        OR
+        ("origem" IN ('GARCOM', 'GERENTE', 'ADM')
+            AND "idUsuario" IS NOT NULL AND "motivo" IS NOT NULL
+            AND length(trim("motivo")) > 0)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS ix_auditoria_cancelamento_item
+    ON "AuditoriaCancelamentoItem"("idItemPedido");
+CREATE INDEX IF NOT EXISTS ix_auditoria_cancelamento_pedido
+    ON "AuditoriaCancelamentoItem"("idPedido");
+
 CREATE TABLE IF NOT EXISTS "Pagamento" (
     "idPagamento" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "idPedido" UUID NOT NULL REFERENCES "Pedido"("idPedido") ON UPDATE CASCADE ON DELETE RESTRICT,

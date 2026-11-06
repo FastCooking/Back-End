@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Body,
     Depends,
     HTTPException,
     Response,
@@ -28,6 +29,7 @@ from src.models.Sessao import Sessao
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
     AdicionarItensMesaRequest,
+    ConfirmacaoCancelamentoCliente,
     ItemPedidoQuantidadeUpdate,
     ItemPedidoStatusUpdate,
     PedidoCreate,
@@ -121,13 +123,14 @@ def remover_item_pedido(
     idPedido: uuid.UUID,
     idItemPedido: uuid.UUID,
     background_tasks: BackgroundTasks,
-    dados: RemoverItemRequest | None = None,
+    dados: RemoverItemRequest,
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
     service = PedidoService(db)
-    motivo = dados.motivo if dados else None
-    result = service.remover_item_comanda(idPedido, idItemPedido, usuario, motivo)
+    result = service.remover_item_comanda(
+        idPedido, idItemPedido, usuario, dados.motivo
+    )
     background_tasks.add_task(service.publish_events, result.pop("events"))
     return result
 
@@ -237,8 +240,10 @@ def alterar_quantidade_item(
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
     service = PedidoService(db)
-    result = service.update_item_quantity(idItemPedido, dados.quantidade, usuario)
-    background_tasks.add_task(service.publish_events, [result.pop("event")])
+    result = service.update_item_quantity(
+        idItemPedido, dados.quantidade, usuario, dados.motivo
+    )
+    background_tasks.add_task(service.publish_events, result.pop("events"))
     return result
 
 
@@ -258,19 +263,33 @@ def liberar_sobremesa(
     return result
 
 
+@router.post("/itens/{idItemPedido}/cancelamento-cliente")
+def cancelar_item_cliente(
+    idItemPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    confirmacao: ConfirmacaoCancelamentoCliente | None = Body(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    service = PedidoService(db)
+    result = service.cancelar_item(idItemPedido)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
 @router.patch(
     "/itens/{idItemPedido}/cancelar",
     responses={409: {"description": "O preparo do item já foi iniciado."}},
 )
 def cancelar_item(
     idItemPedido: uuid.UUID,
+    dados: RemoverItemRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
     service = PedidoService(db)
-    result = service.cancelar_item(idItemPedido, usuario)
-    background_tasks.add_task(service.publish_events, [result.pop("event")])
+    result = service.cancelar_item(idItemPedido, usuario, dados.motivo)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
     return result
 
 
@@ -301,6 +320,16 @@ def registrar_pagamento(
             detail="Este pedido já foi encerrado.",
         )
 
+    itens_pendentes = [it for it in pedido.itens if it.status == "Pendente"]
+    if itens_pendentes:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=(
+                "Não é possível fechar a mesa enquanto houver itens pendentes. "
+                "Cancele-os pela operação específica ou aguarde o preparo."
+            ),
+        )
+
     # 1. Validação de itens: não pode fechar se houver item "Em preparo"
     itens_em_preparo = [it for it in pedido.itens if it.status == "Em preparo"]
     if itens_em_preparo:
@@ -308,20 +337,6 @@ def registrar_pagamento(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="Não é possível fechar a mesa com itens em preparo na cozinha. Aguarde a finalização.",
         )
-
-    # Se houver itens "Pendente", eles são cancelados para realizar o fechamento da mesa
-    itens_pendentes = [it for it in pedido.itens if it.status == "Pendente"]
-    cancel_events = []
-    for it in itens_pendentes:
-        it.update_stats(db, "Cancelado", commit=False)
-        cancel_events.append({
-            "type": "item.cancelled",
-            "idPedido": str(pedido.idPedido),
-            "idItemPedido": str(it.idItemPedido),
-            "nome": it.cardapio.nome if it.cardapio else "Item",
-            "usuario": usuario.nome,
-            "motivo": "Cancelado automaticamente no fechamento da comanda",
-        })
 
     # Calcula valor total considerando itens não cancelados
     total_pedido = sum(
@@ -351,8 +366,7 @@ def registrar_pagamento(
         for s in sessoes_abertas:
             s.status = "Fechada"
 
-        events_to_publish = list(cancel_events)
-        events_to_publish.append({
+        events_to_publish = [{
             "type": "order.closed",
             "idPedido": str(idPedido),
             "idMesa": str(pedido.idMesa),
@@ -360,7 +374,8 @@ def registrar_pagamento(
             "total": 0.0,
             "totalPago": 0.0,
             "formaPagamento": dados.formaPagamento,
-        })
+        }
+        ]
         events_to_publish.append({
             "type": "table.status_changed",
             "idMesa": str(pedido.idMesa),
@@ -414,7 +429,7 @@ def registrar_pagamento(
     novo_total_pago = round(total_ja_pago + valor_a_pagar, 2)
     novo_saldo_restante = max(0.0, round(total_pedido - novo_total_pago, 2))
 
-    events_to_publish = list(cancel_events)
+    events_to_publish = []
     pedido_encerrado = False
 
     if novo_saldo_restante <= 0.01:

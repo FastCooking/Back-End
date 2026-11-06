@@ -1,3 +1,4 @@
+from src.models.AuditoriaCancelamentoItem import AuditoriaCancelamentoItem
 from src.models.Cardapio import Cardapio
 from src.models.Estoque import Estoque
 from src.models.FichaTecnica import FichaTecnica
@@ -9,6 +10,7 @@ from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario
 
 __all__ = [
+    "AuditoriaCancelamentoItem",
     "Cardapio",
     "Estoque",
     "FichaTecnica",
