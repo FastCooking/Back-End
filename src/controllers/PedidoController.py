@@ -3,22 +3,38 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Body,
+    Depends,
+    HTTPException,
+    Response,
+    WebSocket,
+)
 from fastapi import status as http_status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocketDisconnect
+from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.core.realtime import realtime_hub
 from src.core.security import decodificar_token, exigir_funcao, get_user_from_token
 from src.database.connection import get_db
+from src.models.Mesa import Mesa
+from src.models.Pagamento import Pagamento
+from src.models.Pedido import Pedido
+from src.models.Sessao import Sessao
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
+    AdicionarItensMesaRequest,
+    ConfirmacaoCancelamentoCliente,
     ItemPedidoQuantidadeUpdate,
     ItemPedidoStatusUpdate,
     PedidoCreate,
     PedidoItemCreate,
+    RemoverItemRequest,
 )
 from src.services.PedidoService import PedidoService
 
@@ -39,7 +55,39 @@ def get_optional_user(
         return None
 
 
-@router.post("", status_code=http_status.HTTP_201_CREATED)
+@router.post(
+    "/mesas/{idMesa}/itens",
+    responses={400: {"description": "Item indisponível por falta de estoque."}},
+)
+def adicionar_itens_mesa(
+    idMesa: uuid.UUID,
+    dados: AdicionarItensMesaRequest,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(get_optional_user),
+) -> dict:
+    service = PedidoService(db)
+    result = service.add_items_to_table(
+        idMesa=idMesa,
+        itens=dados.itens,
+        usuario=usuario,
+        sessao_id=dados.sessao_id,
+    )
+    if result.get("rf01Aplicado"):
+        response.status_code = http_status.HTTP_201_CREATED
+    else:
+        response.status_code = http_status.HTTP_200_OK
+
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
+@router.post(
+    "",
+    status_code=http_status.HTTP_201_CREATED,
+    responses={400: {"description": "Item indisponível por falta de estoque."}},
+)
 def criar_pedido(
     dados: PedidoCreate,
     background_tasks: BackgroundTasks,
@@ -52,7 +100,11 @@ def criar_pedido(
     return result
 
 
-@router.post("/{idPedido}/itens", status_code=http_status.HTTP_201_CREATED)
+@router.post(
+    "/{idPedido}/itens",
+    status_code=http_status.HTTP_201_CREATED,
+    responses={400: {"description": "Item indisponível por falta de estoque."}},
+)
 def adicionar_itens_ao_pedido(
     idPedido: uuid.UUID,
     itens: list[PedidoItemCreate],
@@ -62,6 +114,36 @@ def adicionar_itens_ao_pedido(
 ) -> dict:
     service = PedidoService(db)
     result = service.add_items(idPedido, itens, usuario)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
+@router.delete("/{idPedido}/itens/{idItemPedido}")
+def remover_item_pedido(
+    idPedido: uuid.UUID,
+    idItemPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    dados: RemoverItemRequest,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    result = service.remover_item_comanda(
+        idPedido, idItemPedido, usuario, dados.motivo
+    )
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
+@router.post("/{idPedido}/assumir-entrega")
+def assumir_entrega(
+    idPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    service = PedidoService(db)
+    result = service.assumir_entrega(idPedido, usuario)
     background_tasks.add_task(service.publish_events, result.pop("events"))
     return result
 
@@ -129,7 +211,13 @@ async def handle_tracking_websocket(
         await realtime_hub.disconnect_tracking(websocket)
 
 
-@router.patch("/itens/{idItemPedido}/status")
+@router.patch(
+    "/itens/{idItemPedido}/status",
+    responses={
+        400: {"description": "Item indisponível por falta de estoque."},
+        409: {"description": "Transição de status inválida."},
+    },
+)
 def alterar_status_item(
     idItemPedido: uuid.UUID,
     dados: ItemPedidoStatusUpdate,
@@ -152,8 +240,10 @@ def alterar_quantidade_item(
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
     service = PedidoService(db)
-    result = service.update_item_quantity(idItemPedido, dados.quantidade, usuario)
-    background_tasks.add_task(service.publish_events, [result.pop("event")])
+    motivo = getattr(dados, "motivo", None)
+    result = service.update_item_quantity(idItemPedido, dados.quantidade, usuario, motivo)
+    events = result.pop("events", None) or [result.pop("event", None)]
+    background_tasks.add_task(service.publish_events, [e for e in events if e])
     return result
 
 
@@ -173,25 +263,36 @@ def liberar_sobremesa(
     return result
 
 
-@router.patch("/itens/{idItemPedido}/cancelar")
+@router.post("/itens/{idItemPedido}/cancelamento-cliente")
+def cancelar_item_cliente(
+    idItemPedido: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    confirmacao: ConfirmacaoCancelamentoCliente | None = Body(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    service = PedidoService(db)
+    result = service.cancelar_item(idItemPedido)
+    background_tasks.add_task(service.publish_events, result.pop("events"))
+    return result
+
+
+@router.patch(
+    "/itens/{idItemPedido}/cancelar",
+    responses={409: {"description": "O preparo do item já foi iniciado."}},
+)
 def cancelar_item(
     idItemPedido: uuid.UUID,
+    dados: RemoverItemRequest | None = None,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
     service = PedidoService(db)
-    result = service.cancelar_item(idItemPedido, usuario)
-    background_tasks.add_task(service.publish_events, [result.pop("event")])
+    motivo = dados.motivo if dados else None
+    result = service.cancelar_item(idItemPedido, usuario, motivo)
+    events = result.pop("events", None) or [result.pop("event", None)]
+    background_tasks.add_task(service.publish_events, [e for e in events if e])
     return result
-
-
-from pydantic import BaseModel
-
-from src.models.Mesa import Mesa
-from src.models.Pagamento import Pagamento
-from src.models.Pedido import Pedido
-from src.models.Sessao import Sessao
 
 
 class PagamentoCreateRequest(BaseModel):
@@ -221,6 +322,7 @@ def registrar_pagamento(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="Este pedido já foi encerrado.",
         )
+
 
     # 1. Validação de itens: não pode fechar se houver item "Em preparo"
     itens_em_preparo = [it for it in pedido.itens if it.status == "Em preparo"]
@@ -261,7 +363,14 @@ def registrar_pagamento(
         if mesa:
             mesa.update(db, status="Disponivel", commit=False)
 
-        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status.in_(["Aberta", "Ativa"])).all()
+        sessoes_abertas = (
+            db.query(Sessao)
+            .filter(
+                Sessao.idMesa == pedido.idMesa,
+                Sessao.status.in_(["Aberta", "Ativa"]),
+            )
+            .all()
+        )
         for s in sessoes_abertas:
             s.status = "Fechada"
 
@@ -348,7 +457,14 @@ def registrar_pagamento(
         if mesa:
             mesa.update(db, status="Disponivel", commit=False)
 
-        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status.in_(["Aberta", "Ativa"])).all()
+        sessoes_abertas = (
+            db.query(Sessao)
+            .filter(
+                Sessao.idMesa == pedido.idMesa,
+                Sessao.status.in_(["Aberta", "Ativa"]),
+            )
+            .all()
+        )
         for s in sessoes_abertas:
             s.status = "Fechada"
 

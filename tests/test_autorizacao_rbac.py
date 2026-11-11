@@ -34,7 +34,7 @@ Regras de negócio validadas:
 
 import os
 import sys
-import uuid
+
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -47,7 +47,6 @@ from src.models.Pedido import Pedido
 from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario
 from src.services.UsuarioService import hash_senha
-
 
 # =====================================================================
 # HELPERS
@@ -560,6 +559,13 @@ def test_garcom_acessa_atendimento_entregas_e_pagamentos(client, cenario_rbac):
         headers=headers,
     )
     assert resp_libera.status_code == 200
+
+    resp_cancela_sobremesa = client.patch(
+        f"/pedidos/itens/{id_item_sobremesa}/cancelar",
+        json={"motivo": "Cliente não deseja sobremesa"},
+        headers=headers,
+    )
+    assert resp_cancela_sobremesa.status_code == 200
 
     # 2. Cozinha avança item: Pendente -> Em preparo -> Pronto
     resp_prep = client.patch(

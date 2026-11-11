@@ -554,8 +554,12 @@ class RealtimeHub:
                 elif subscription.role in ALLOWED_WAITER_ROLES:
                     if subscription.shift_status != ShiftStatus.ON_SHIFT.value:
                         recipient = False
-                    elif item_data.get("status") == "Pronto" or not assigned_waiter_id:
-                        # RF06: If item is ready (Pronto), notify ALL active waiters of the restaurant.
+                    elif (
+                        item_data.get("status") in ("Pronto", "Cancelado")
+                        or event_type == "item.removed"
+                        or not assigned_waiter_id
+                    ):
+                        # RF06 & Adição/Remoção Universal: notify ALL active waiters of the restaurant.
                         recipient = True
                     else:
                         recipient = str(assigned_waiter_id) == str(subscription.user_id)

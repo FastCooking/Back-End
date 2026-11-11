@@ -29,7 +29,7 @@ from src.controllers.MesaController import router as mesa_router
 from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
-from src.core.bootstrap import garantir_usuario_admin, executar_migracoes_seguras
+from src.core.bootstrap import executar_migracoes_seguras, garantir_usuario_admin
 from src.database.connection import get_db, test_connection
 from src.services.DeliveryService import DeliveryDomainError
 
@@ -101,7 +101,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     """Garante que erros 500 não quebrem o cabeçalho CORS e retornem mensagem estruturada em JSON."""
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": f"Erro interno do servidor: {str(exc)}"},
+        content={"detail": f"Erro interno do servidor: {exc!s}"},
     )
 
 
@@ -161,7 +161,7 @@ def getVarsEnv():
     varsEnv = {
         "DATABASE_URL": os.getenv("DATABASE_URL"),
         "BCRYPT_ROUNDS": os.getenv("BCRYPT_ROUNDS"),
-        "SERVER_PORT": os.getenv("SERVER_PORT"),
+        "SERVER_PORT": os.getenv("BACKEND_PORT") or os.getenv("SERVER_PORT"),
         "JWT_SECRET": os.getenv("JWT_SECRET"),
     }
 

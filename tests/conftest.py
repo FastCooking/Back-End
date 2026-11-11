@@ -1,4 +1,6 @@
 import os
+
+os.environ["BCRYPT_ROUNDS"] = "4"
 import sys
 
 # Adiciona o diretório principal no PYTHONPATH para encontrar a pasta "src"
