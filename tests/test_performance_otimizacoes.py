@@ -280,3 +280,11 @@ def test_listar_pedidos_eager_loading(client, db_session):
 
     # Com joinedload e selectinload, o total de queries para N pedidos é O(1) e não O(N)
     assert counter.count <= 6, f"Esperado poucas queries em lote, ocorreram {counter.count}"
+
+
+def test_cors_headers_com_origem_frontend(client):
+    """Valida que respostas de erro ou sucesso retornam Access-Control-Allow-Origin específico para o frontend."""
+    origin = "https://fastcooking-front-dev.vercel.app"
+    res = client.post("/auth/login", json={"email": "inexistente@teste.com", "senha": "123"}, headers={"Origin": origin})
+    assert res.headers.get("access-control-allow-origin") == origin
+    assert res.headers.get("access-control-allow-credentials") == "true"

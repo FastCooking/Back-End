@@ -9,9 +9,12 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fastcooking.db")
-if not DATABASE_URL:
-    DATABASE_URL = "sqlite:///./fastcooking.db"
+DATABASE_URL = (
+    os.getenv("DATABASE_URL")
+    or os.getenv("POSTGRES_URL")
+    or os.getenv("POSTGRES_PRISMA_URL")
+    or "sqlite:///./fastcooking.db"
+)
 
 url_obj = make_url(DATABASE_URL)
 engine_kwargs = {"pool_pre_ping": True}
