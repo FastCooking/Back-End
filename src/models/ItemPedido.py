@@ -121,6 +121,7 @@ class ItemPedido(Base):
     ) -> "ItemPedido":
         """Cria e persiste um novo item de pedido."""
         item = cls(
+            idItemPedido=uuid.uuid4(),
             idPedido=idPedido,
             idCardapio=idCardapio,
             quantidade=quantidade,
@@ -136,6 +137,8 @@ class ItemPedido(Base):
         if commit:
             db.commit()
             db.refresh(item)
+        else:
+            db.flush()
         return item
 
     @classmethod

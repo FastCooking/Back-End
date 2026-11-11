@@ -235,12 +235,11 @@ def test_listar_pedidos_eager_loading(client, db_session):
     rest = criar_restaurante_teste(db_session, "Restaurante Eager List")
     gerente = criar_usuario_teste(db_session, rest.idRestaurante, funcao="Gerente", nome="Gerente Eager")
 
-    mesa = Mesa(idRestaurante=rest.idRestaurante, numero=10, status="Ocupada")
-    db_session.add(mesa)
-    db_session.commit()
-
-    # Cria 3 pedidos com itens
+    # Cria 3 pedidos com itens em mesas distintas (respeitando uq_pedido_ativo_por_mesa)
     for i in range(3):
+        mesa = Mesa(idRestaurante=rest.idRestaurante, numero=10 + i, status="Ocupada")
+        db_session.add(mesa)
+        db_session.commit()
         ped = Pedido(idRestaurante=rest.idRestaurante, idMesa=mesa.idMesa, status="Aberto")
         db_session.add(ped)
         db_session.commit()
@@ -274,7 +273,7 @@ def test_listar_pedidos_eager_loading(client, db_session):
     dados = response.json()
     assert len(dados) == 3
     for p in dados:
-        assert p["numeroMesa"] == 10
+        assert p["numeroMesa"] in (10, 11, 12)
         assert len(p["itens"]) == 1
         assert "Item Eager" in p["itens"][0]["nome"]
 

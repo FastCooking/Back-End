@@ -855,7 +855,6 @@ class PedidoService:
             .filter(
                 Cardapio.idCardapio.in_(item_ids),
                 Cardapio.idRestaurante == idRestaurante,
-                Cardapio.status.is_(True),
             )
             .all()
         )

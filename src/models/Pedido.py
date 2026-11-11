@@ -122,6 +122,7 @@ class Pedido(Base):
         commit: bool = True,
     ) -> "Pedido":
         pedido = cls(
+            idPedido=uuid.uuid4(),
             idRestaurante=idRestaurante,
             idMesa=idMesa,
             idGarcom=idGarcom,
@@ -133,6 +134,8 @@ class Pedido(Base):
         if commit:
             db.commit()
             db.refresh(pedido)
+        else:
+            db.flush()
         return pedido
 
     def update_stats(self, db: Session, status: str, commit: bool = True) -> "Pedido":

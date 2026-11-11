@@ -22,14 +22,11 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from src.core.realtime import realtime_hub
 from src.core.security import decodificar_token, exigir_funcao, get_user_from_token
 from src.database.connection import get_db
-<<<<<<< HEAD
+from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
 from src.models.Pagamento import Pagamento
 from src.models.Pedido import Pedido
 from src.models.Sessao import Sessao
-=======
-from src.models.ItemPedido import ItemPedido
->>>>>>> perf/otimizacao-backend-rnf08
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
     AdicionarItensMesaRequest,
@@ -286,8 +283,8 @@ def cancelar_item_cliente(
 )
 def cancelar_item(
     idItemPedido: uuid.UUID,
-    dados: RemoverItemRequest | None = None,
     background_tasks: BackgroundTasks,
+    dados: RemoverItemRequest | None = None,
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
@@ -328,6 +325,16 @@ def registrar_pagamento(
         )
 
 
+    itens_pendentes = [it for it in pedido.itens if it.status == "Pendente"]
+    if itens_pendentes:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=(
+                "Não é possível fechar a mesa enquanto houver itens pendentes. "
+                "Cancele-os pela operação específica ou aguarde o preparo."
+            ),
+        )
+
     # 1. Validação de itens: não pode fechar se houver item "Em preparo"
     itens_em_preparo = [it for it in pedido.itens if it.status == "Em preparo"]
     if itens_em_preparo:
@@ -336,19 +343,7 @@ def registrar_pagamento(
             detail="Não é possível fechar a mesa com itens em preparo na cozinha. Aguarde a finalização.",
         )
 
-    # Se houver itens "Pendente", eles são cancelados para realizar o fechamento da mesa
-    itens_pendentes = [it for it in pedido.itens if it.status == "Pendente"]
     cancel_events = []
-    for it in itens_pendentes:
-        it.update_stats(db, "Cancelado", commit=False)
-        cancel_events.append({
-            "type": "item.cancelled",
-            "idPedido": str(pedido.idPedido),
-            "idItemPedido": str(it.idItemPedido),
-            "nome": it.cardapio.nome if it.cardapio else "Item",
-            "usuario": usuario.nome,
-            "motivo": "Cancelado automaticamente no fechamento da comanda",
-        })
 
     # Calcula valor total considerando itens não cancelados
     total_pedido = sum(

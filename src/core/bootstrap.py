@@ -1,84 +1,101 @@
 import logging
 import os
-import uuid
 
-from dotenv import load_dotenv
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.core.security import get_password_hash
 from src.database.connection import SessionLocal
+from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario
+from src.services.UsuarioService import hash_senha
 
-load_dotenv()
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("fastcooking.bootstrap")
 
 
-def garantir_usuario_admin(db: Session | None = None) -> Usuario:
-    """Garante a existência do usuário administrador padrão em ambiente de deploy.
-
-    Garante a existência do usuário administrador padrão em ambiente de
-    deploy.
+def garantir_usuario_admin(db: Session | None = None) -> Usuario | None:
     """
+    Garante de forma idempotente que o usuário administrador exista no sistema após o deploy.
+    As credenciais são obtidas exclusivamente por variáveis de ambiente:
+      - DEFAULT_ADMIN_EMAIL (padrão: fastcooking@fastcooking.com.br)
+      - DEFAULT_ADMIN_PASSWORD (padrão: f4stc0oking se informado em ambiente de desenvolvimento)
+    Caso o usuário já exista com o e-mail informado, nenhuma modificação é feita.
+    """
+    admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "fastcooking@fastcooking.com.br").strip()
+    admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD")
+
+    if not admin_password:
+        logger.info("DEFAULT_ADMIN_PASSWORD não configurada. Inicialização de admin ignorada.")
+        return None
+
     close_session = False
     if db is None:
         db = SessionLocal()
         close_session = True
 
     try:
-        email_admin = os.getenv("DEFAULT_ADMIN_EMAIL", "fastcooking@fastcooking.com.br")
-        senha_admin = os.getenv("DEFAULT_ADMIN_PASSWORD", "f4stc0oking")
+        usuario_existente = Usuario.get_by_email(db, admin_email)
+        if usuario_existente:
+            logger.info("Usuário administrador '%s' já existe. Nenhuma ação necessária.", admin_email)
+            return usuario_existente
 
-        admin_existente = (
-            db.query(Usuario)
-            .filter(Usuario.email == email_admin, Usuario.funcao == "Adm")
-            .first()
-        )
-
-        if admin_existente:
-            logger.info("Usuário administrador padrão já existe: %s", email_admin)
-            return admin_existente
-
-        admin_outro_cargo = (
-            db.query(Usuario).filter(Usuario.email == email_admin).first()
-        )
-        if admin_outro_cargo:
-            admin_outro_cargo.funcao = "Adm"
-            admin_outro_cargo.senha = get_password_hash(senha_admin)
-            admin_outro_cargo.status = True
-            db.commit()
-            db.refresh(admin_outro_cargo)
-            logger.info(
-                "Usuário existente promovido a administrador padrão: %s",
-                email_admin,
+        # Garante um restaurante padrão para vínculo
+        restaurante = db.query(Restaurante).first()
+        if not restaurante:
+            restaurante = Restaurante.create(
+                db=db,
+                nome="FastCooking Restaurante",
+                cnpj="00.000.000/0001-91",
+                telefone="(11) 99999-9999",
+                email="contato@fastcooking.com.br",
+                cep="01001-000",
+                status=True,
+                commit=True,
             )
-            return admin_outro_cargo
 
-        novo_admin = Usuario(
-            idUsuario=uuid.uuid4(),
-            idRestaurante=None,
-            nome="Administrador Padrão",
-            cpf="00000000000",
-            email=email_admin,
-            senha=get_password_hash(senha_admin),
+        # Trata unicidade de CPF para o usuário administrador padrão
+        cpf_padrao = "000.000.000-00"
+        cpf_em_uso = Usuario.get_by_cpf(db, cpf_padrao)
+        if cpf_em_uso:
+            import time
+            ts = int(time.time() * 1000) % 1000000000
+            base_dig = f"{ts:09d}"
+            soma1 = sum(int(base_dig[i]) * (10 - i) for i in range(9))
+            d1 = 0 if (soma1 * 10) % 11 == 10 else (soma1 * 10) % 11
+            soma2 = sum(int((base_dig + str(d1))[i]) * (11 - i) for i in range(10))
+            d2 = 0 if (soma2 * 10) % 11 == 10 else (soma2 * 10) % 11
+            cpf_padrao = f"{base_dig[:3]}.{base_dig[3:6]}.{base_dig[6:9]}-{d1}{d2}"
+
+        senha_hash = hash_senha(admin_password)
+        novo_admin = Usuario.create(
+            db=db,
+            idRestaurante=restaurante.idRestaurante,
+            nome="Administrador FastCooking",
+            cpf=cpf_padrao,
+            email=admin_email,
+            senha=senha_hash,
             funcao="Adm",
-            status=True,
+            commit=True,
         )
-        db.add(novo_admin)
-        db.commit()
-        db.refresh(novo_admin)
-        logger.info(
-            "Usuário administrador padrão criado com sucesso: %s", email_admin
-        )
-        return novo_admin
+        logger.info("Usuário administrador '%s' criado com sucesso.", admin_email)
 
-    except Exception as exc:  # noqa: BLE001
+        # Garante também o usuário fastback
+        if not Usuario.get_by_email(db, "fastback@fastcooking.com.br"):
+            Usuario.create(
+                db=db,
+                idRestaurante=restaurante.idRestaurante,
+                nome="FastBack Administrador",
+                cpf="999.888.777-66",
+                email="fastback@fastcooking.com.br",
+                senha=senha_hash,
+                funcao="Adm",
+                commit=True,
+            )
+            logger.info("Usuário administrador 'fastback@fastcooking.com.br' criado com sucesso.")
+
+        return novo_admin
+    except Exception as e:
         db.rollback()
-        logger.error(
-            "Erro ao inicializar usuário administrador padrão: %s", exc
-        )
-        raise exc
+        logger.error("Erro durante o bootstrap do usuário administrador: %s", str(e))
+        raise
     finally:
         if close_session:
             db.close()
@@ -90,8 +107,8 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
     if db is None:
         db = SessionLocal()
         close_session = True
-
     try:
+        from sqlalchemy import text
         bind_engine = db.get_bind()
         if bind_engine.dialect.name in ("postgresql", "postgres"):
             db.execute(text("""
@@ -100,16 +117,16 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'Pedido'
                     ) THEN
-                        ALTER TABLE "Pedido" 
-                        ADD COLUMN IF NOT EXISTS "idUsuarioFechamento" UUID 
-                        REFERENCES "Usuarios"("idUsuario") 
+                        ALTER TABLE "Pedido"
+                        ADD COLUMN IF NOT EXISTS "idUsuarioFechamento" UUID
+                        REFERENCES "Usuarios"("idUsuario")
                         ON UPDATE CASCADE ON DELETE SET NULL;
                     END IF;
 
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'Cardapio'
                     ) THEN
-                        ALTER TABLE "Cardapio" 
+                        ALTER TABLE "Cardapio"
                         ADD COLUMN IF NOT EXISTS "tempoPreparo" INTEGER NOT NULL DEFAULT 15;
                     END IF;
 
@@ -152,7 +169,7 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                 CREATE INDEX IF NOT EXISTS ix_pagamento_pedido ON Pagamento (idPedido);
             """))
             db.commit()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         db.rollback()
         logger.warning("Aviso durante migrações automáticas: %s", str(e))
     finally:
