@@ -7,6 +7,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -21,6 +22,13 @@ from src.database.connection import Base
 
 class ItemPedido(Base):
     __tablename__ = "ItemPedido"
+    __table_args__ = (
+        Index("ix_item_pedido_kds", "idPedido", "status", "liberadoParaPreparo"),
+        Index("ix_item_pedido_status", "status"),
+        Index("ix_item_pedido_delivery", "deliveryStatus", "claimedByWaiterId"),
+        Index("ix_item_pedido_data_criacao", "dataCriacao"),
+        Index("ix_item_pedido_cardapio", "idCardapio"),
+    )
 
     idItemPedido: uuid.UUID = Column(
         UUID(as_uuid=True),

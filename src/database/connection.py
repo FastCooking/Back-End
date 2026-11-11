@@ -14,12 +14,20 @@ if not DATABASE_URL:
     DATABASE_URL = "sqlite:///./fastcooking.db"
 
 url_obj = make_url(DATABASE_URL)
+engine_kwargs = {"pool_pre_ping": True}
+
 if url_obj.drivername in ("postgresql", "postgres"):
     DATABASE_URL = url_obj.set(drivername="postgresql+psycopg").render_as_string(
         hide_password=False
     )
+    engine_kwargs.update({
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "20")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "15")),
+        "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
+        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "1800")),
+    })
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from src.core.events import domain_event_bus
 from src.core.realtime import realtime_hub
@@ -160,6 +160,10 @@ class PedidoService:
             )
         itens = (
             self.db.query(ItemPedido)
+            .options(
+                joinedload(ItemPedido.cardapio),
+                joinedload(ItemPedido.pedido).joinedload(Pedido.mesa),
+            )
             .filter(ItemPedido.idPedido == idPedido)
             .order_by(ItemPedido.dataCriacao.asc())
             .all()
@@ -196,6 +200,10 @@ class PedidoService:
 
         itens = (
             self.db.query(ItemPedido)
+            .options(
+                joinedload(ItemPedido.cardapio),
+                joinedload(ItemPedido.pedido).joinedload(Pedido.mesa),
+            )
             .filter(ItemPedido.idPedido == idPedido)
             .order_by(ItemPedido.dataCriacao.asc())
             .all()
@@ -547,6 +555,10 @@ class PedidoService:
         query = (
             self.db.query(ItemPedido, Pedido)
             .join(Pedido, ItemPedido.idPedido == Pedido.idPedido)
+            .options(
+                joinedload(ItemPedido.cardapio),
+                joinedload(ItemPedido.pedido).joinedload(Pedido.mesa),
+            )
             .filter(
                 Pedido.idRestaurante == usuario.idRestaurante,
                 Pedido.status.notin_(["Fechado", "Cancelado"]),
@@ -618,25 +630,29 @@ class PedidoService:
         itens: list[PedidoItemCreate],
         idRestaurante: uuid.UUID,
     ) -> list[Cardapio]:
-        cardapios: list[Cardapio] = []
+        if not itens:
+            return []
 
-        for item in itens:
-            cardapio = (
-                self.db.query(Cardapio)
-                .filter(
-                    Cardapio.idCardapio == item.idCardapio,
-                    Cardapio.idRestaurante == idRestaurante,
-                    Cardapio.status.is_(True),
-                )
-                .first()
+        item_ids = [it.idCardapio for it in itens]
+        cardapios_db = (
+            self.db.query(Cardapio)
+            .filter(
+                Cardapio.idCardapio.in_(item_ids),
+                Cardapio.idRestaurante == idRestaurante,
+                Cardapio.status.is_(True),
             )
+            .all()
+        )
+        cardapios_map = {str(c.idCardapio): c for c in cardapios_db}
 
+        cardapios: list[Cardapio] = []
+        for item in itens:
+            cardapio = cardapios_map.get(str(item.idCardapio))
             if cardapio is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Item do cardápio não encontrado neste restaurante.",
                 )
-
             cardapios.append(cardapio)
 
         return cardapios

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, func, text
+from sqlalchemy import Column, DateTime, Index, ForeignKey, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -11,6 +11,9 @@ from src.database.connection import Base
 
 class Pagamento(Base):
     __tablename__ = "Pagamento"
+    __table_args__ = (
+        Index("ix_pagamento_pedido", "idPedido"),
+    )
 
     idPagamento: uuid.UUID = Column(
         UUID(as_uuid=True),

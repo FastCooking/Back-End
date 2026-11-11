@@ -400,30 +400,32 @@ class RealtimeHub:
             shift_status=shift_status,
         )
 
+        snapshot = snapshot_factory()
         async with self._lock:
-            snapshot = snapshot_factory()
             self._subscriptions.add(subscription)
             subscription.sequence += 1
-
             if isinstance(snapshot, dict):
                 snapshot["queueVersion"] = self._queue_version
+            queue_version = self._queue_version
+            seq = subscription.sequence
 
-            try:
-                await asyncio.wait_for(
-                    websocket.send_json(
-                        self._event(
-                            "queue.snapshot",
-                            restaurant_id,
-                            self._queue_version,
-                            sequence=subscription.sequence,
-                            data=snapshot,
-                        )
-                    ),
-                    timeout=self.send_timeout,
-                )
-            except Exception:
+        try:
+            await asyncio.wait_for(
+                websocket.send_json(
+                    self._event(
+                        "queue.snapshot",
+                        restaurant_id,
+                        queue_version,
+                        sequence=seq,
+                        data=snapshot,
+                    )
+                ),
+                timeout=self.send_timeout,
+            )
+        except Exception:
+            async with self._lock:
                 self._subscriptions.discard(subscription)
-                raise
+            raise
 
     async def refresh_queue(
         self,
@@ -440,41 +442,40 @@ class RealtimeHub:
                 ),
                 None,
             )
-
             if subscription is None:
                 return False
+            subscription.sequence += 1
+            queue_version = self._queue_version
+            seq = subscription.sequence
+            rest_id = subscription.restaurant_id
 
-            try:
-                snapshot = snapshot_factory()
+        snapshot = snapshot_factory()
+        if isinstance(snapshot, dict):
+            snapshot["queueVersion"] = queue_version
 
-                if isinstance(snapshot, dict):
-                    snapshot["queueVersion"] = self._queue_version
-
-                subscription.sequence += 1
-
-                await asyncio.wait_for(
-                    websocket.send_json(
-                        self._event(
-                            "queue.snapshot",
-                            subscription.restaurant_id,
-                            self._queue_version,
-                            sequence=subscription.sequence,
-                            data=snapshot,
-                        )
-                    ),
-                    timeout=self.send_timeout,
-                )
-
-                return True
-
-            except (
-                OSError,
-                RuntimeError,
-                TimeoutError,
-                WebSocketDisconnect,
-            ):
+        try:
+            await asyncio.wait_for(
+                websocket.send_json(
+                    self._event(
+                        "queue.snapshot",
+                        rest_id,
+                        queue_version,
+                        sequence=seq,
+                        data=snapshot,
+                    )
+                ),
+                timeout=self.send_timeout,
+            )
+            return True
+        except (
+            OSError,
+            RuntimeError,
+            TimeoutError,
+            WebSocketDisconnect,
+        ):
+            async with self._lock:
                 self._subscriptions.discard(subscription)
-                return False
+            return False
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
@@ -569,14 +570,6 @@ class RealtimeHub:
                         self._send_events(subscription, events, timeout=self.send_timeout)
                     )
 
-            failed = await asyncio.gather(*deliveries)
-
-            self._subscriptions.difference_update(
-                subscription
-                for subscription in failed
-                if subscription is not None
-            )
-
             # Dispatch to customer tracking subscribers
             order_id_str = str(item_data.get("idPedido", ""))
             tracking_deliveries = []
@@ -598,11 +591,19 @@ class RealtimeHub:
                         )
                     )
 
-            if tracking_deliveries:
-                failed_tracking = await asyncio.gather(*tracking_deliveries)
-                self._tracking_subscriptions.difference_update(
-                    sub for sub in failed_tracking if sub is not None
-                )
+        if deliveries:
+            failed = await asyncio.gather(*deliveries)
+            failed_subs = [s for s in failed if s is not None]
+            if failed_subs:
+                async with self._lock:
+                    self._subscriptions.difference_update(failed_subs)
+
+        if tracking_deliveries:
+            failed_tracking = await asyncio.gather(*tracking_deliveries)
+            failed_track = [s for s in failed_tracking if s is not None]
+            if failed_track:
+                async with self._lock:
+                    self._tracking_subscriptions.difference_update(failed_track)
 
     async def publish_waiter_call(
         self,
@@ -629,11 +630,12 @@ class RealtimeHub:
                         self._send_events(subscription, [event], timeout=self.send_timeout)
                     )
 
-            if deliveries:
-                failed = await asyncio.gather(*deliveries)
-                self._subscriptions.difference_update(
-                    sub for sub in failed if sub is not None
-                )
+        if deliveries:
+            failed = await asyncio.gather(*deliveries)
+            failed_subs = [s for s in failed if s is not None]
+            if failed_subs:
+                async with self._lock:
+                    self._subscriptions.difference_update(failed_subs)
 
     async def publish_event(
         self,
@@ -653,11 +655,12 @@ class RealtimeHub:
                 for sub in tuple(self._subscriptions)
                 if str(sub.restaurant_id) == str(restaurant_id)
             ]
-            if deliveries:
-                failed = await asyncio.gather(*deliveries)
-                self._subscriptions.difference_update(
-                    sub for sub in failed if sub is not None
-                )
+        if deliveries:
+            failed = await asyncio.gather(*deliveries)
+            failed_subs = [s for s in failed if s is not None]
+            if failed_subs:
+                async with self._lock:
+                    self._subscriptions.difference_update(failed_subs)
 
     @staticmethod
     async def _send_events(

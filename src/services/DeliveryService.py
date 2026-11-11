@@ -96,7 +96,6 @@ class DeliveryService:
         - Garante no máximo 1 entrega ativa (`IN_DELIVERY` / `IN_PROGRESS` / `PENDING_DELIVERY`) por garçom.
         """
         lock_keys = (
-            f"restaurant:{waiter.idRestaurante}",
             f"item:{item_id}",
             f"waiter:{waiter.idUsuario}",
         )
@@ -326,7 +325,7 @@ class DeliveryService:
         Aceita tanto `idEntrega` quanto `idItemPedido` como identificador.
         """
         lock_keys = (
-            f"restaurant:{waiter.idRestaurante}",
+            f"delivery:{delivery_or_item_id}",
             f"waiter:{waiter.idUsuario}",
         )
 

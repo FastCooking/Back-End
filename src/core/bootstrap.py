@@ -130,8 +130,37 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                     END IF;
                 END $$;
             """))
+            # Índices de performance para PostgreSQL
+            db.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_kds ON "ItemPedido" ("idPedido", "status", "liberadoParaPreparo");
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_status ON "ItemPedido" ("status");
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_delivery ON "ItemPedido" ("deliveryStatus", "claimedByWaiterId");
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_data_criacao ON "ItemPedido" ("dataCriacao");
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_cardapio ON "ItemPedido" ("idCardapio");
+                CREATE INDEX IF NOT EXISTS ix_pedido_restaurante_status ON "Pedido" ("idRestaurante", "status");
+                CREATE INDEX IF NOT EXISTS ix_pedido_mesa_status ON "Pedido" ("idMesa", "status");
+                CREATE INDEX IF NOT EXISTS ix_pedido_data_abertura ON "Pedido" ("dataAbertura");
+                CREATE INDEX IF NOT EXISTS ix_mesa_restaurante_status ON "Mesa" ("idRestaurante", "status");
+                CREATE INDEX IF NOT EXISTS ix_cardapio_rest_status_cat ON "Cardapio" ("idRestaurante", "status", "categoria");
+                CREATE INDEX IF NOT EXISTS ix_pagamento_pedido ON "Pagamento" ("idPedido");
+            """))
             db.commit()
             logger.info("Migrações seguras executadas com sucesso.")
+        elif bind_engine.dialect.name == "sqlite":
+            db.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_kds ON ItemPedido (idPedido, status, liberadoParaPreparo);
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_status ON ItemPedido (status);
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_delivery ON ItemPedido (deliveryStatus, claimedByWaiterId);
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_data_criacao ON ItemPedido (dataCriacao);
+                CREATE INDEX IF NOT EXISTS ix_item_pedido_cardapio ON ItemPedido (idCardapio);
+                CREATE INDEX IF NOT EXISTS ix_pedido_restaurante_status ON Pedido (idRestaurante, status);
+                CREATE INDEX IF NOT EXISTS ix_pedido_mesa_status ON Pedido (idMesa, status);
+                CREATE INDEX IF NOT EXISTS ix_pedido_data_abertura ON Pedido (dataAbertura);
+                CREATE INDEX IF NOT EXISTS ix_mesa_restaurante_status ON Mesa (idRestaurante, status);
+                CREATE INDEX IF NOT EXISTS ix_cardapio_rest_status_cat ON Cardapio (idRestaurante, status, categoria);
+                CREATE INDEX IF NOT EXISTS ix_pagamento_pedido ON Pagamento (idPedido);
+            """))
+            db.commit()
     except Exception as e:
         db.rollback()
         logger.warning("Aviso durante migrações automáticas: %s", str(e))
