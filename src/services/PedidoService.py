@@ -633,7 +633,12 @@ class PedidoService:
         if not itens:
             return []
 
-        item_ids = [it.idCardapio for it in itens]
+        def _get_item_cardapio_id(it):
+            if isinstance(it, dict):
+                return it.get("idCardapio")
+            return getattr(it, "idCardapio", None)
+
+        item_ids = [_get_item_cardapio_id(it) for it in itens]
         cardapios_db = (
             self.db.query(Cardapio)
             .filter(
@@ -647,7 +652,7 @@ class PedidoService:
 
         cardapios: list[Cardapio] = []
         for item in itens:
-            cardapio = cardapios_map.get(str(item.idCardapio))
+            cardapio = cardapios_map.get(str(_get_item_cardapio_id(item)))
             if cardapio is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
