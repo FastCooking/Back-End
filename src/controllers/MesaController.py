@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from src.core.realtime import realtime_hub
 from src.core.security import exigir_funcao
@@ -177,7 +177,12 @@ def abrir_mesa(
     db: Session = Depends(get_db),
 ):
     sessao = SessaoService.abrir_mesa(db, idMesa)
-    mesa = Mesa.get_by_id(db, idMesa)
+    mesa = (
+        db.query(Mesa)
+        .options(joinedload(Mesa.restaurante))
+        .filter(Mesa.idMesa == idMesa)
+        .first()
+    )
     pedido_ativo = Pedido.get_active_for_table(db, idMesa) if mesa else None
 
     if not pedido_ativo and mesa:

@@ -11,6 +11,18 @@ from src.database.connection import Base
 
 class Pedido(Base):
     __tablename__ = "Pedido"
+    __table_args__ = (
+        Index("ix_pedido_restaurante_status", "idRestaurante", "status"),
+        Index("ix_pedido_mesa_status", "idMesa", "status"),
+        Index("ix_pedido_data_abertura", "dataAbertura"),
+        Index(
+            "uq_pedido_ativo_por_mesa",
+            "idMesa",
+            unique=True,
+            postgresql_where=text("status NOT IN ('Fechado', 'Cancelado')"),
+            sqlite_where=text('"status" NOT IN (\'Fechado\', \'Cancelado\')'),
+        ),
+    )
 
     idPedido: uuid.UUID = Column(
         UUID(as_uuid=True),
@@ -61,20 +73,42 @@ class Pedido(Base):
         "Pagamento", back_populates="pedido", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (
-        Index(
-            "uq_pedido_ativo_por_mesa",
-            "idMesa",
-            unique=True,
-            postgresql_where=text("status NOT IN ('Fechado', 'Cancelado')"),
-            sqlite_where=text('"status" NOT IN (\'Fechado\', \'Cancelado\')'),
-        ),
-    )
-
     def __repr__(self):
         return (
             f"<Pedido(id={self.idPedido}, mesa={self.idMesa}, status='{self.status}')>"
         )
+
+    @classmethod
+    def get_by_id(cls, db: Session, idPedido: uuid.UUID | str) -> Optional["Pedido"]:
+        return db.query(cls).filter(cls.idPedido == idPedido).first()
+
+    @classmethod
+    def get_active_for_table(
+        cls, db: Session, idMesa: uuid.UUID | str
+    ) -> Optional["Pedido"]:
+        return (
+            db.query(cls)
+            .filter(
+                cls.idMesa == idMesa,
+                cls.status.notin_(["Fechado", "Cancelado"]),
+            )
+            .first()
+        )
+
+    @classmethod
+    def get_all_by_restaurante(
+        cls,
+        db: Session,
+        idRestaurante: uuid.UUID | str,
+        status: str | None = None,
+        apenas_ativos: bool = False,
+    ) -> list["Pedido"]:
+        query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
+        if status:
+            query = query.filter(cls.status == status)
+        elif apenas_ativos:
+            query = query.filter(cls.status.notin_(["Fechado", "Cancelado"]))
+        return query.order_by(cls.dataAbertura.desc()).all()
 
     @classmethod
     def create(
@@ -87,87 +121,31 @@ class Pedido(Base):
         status: str = "Aberto",
         commit: bool = True,
     ) -> "Pedido":
-        """Cria e persiste um novo pedido/comanda."""
         pedido = cls(
             idRestaurante=idRestaurante,
             idMesa=idMesa,
             idGarcom=idGarcom,
             sessao_id=sessao_id,
             status=status,
+            dataAbertura=datetime.now(),
         )
         db.add(pedido)
         if commit:
             db.commit()
             db.refresh(pedido)
-        else:
-            db.flush()
         return pedido
 
-    @classmethod
-    def get_by_id(cls, db: Session, idPedido: uuid.UUID | str) -> Optional["Pedido"]:
-        """Busca pedido pelo ID."""
-        return db.query(cls).filter(cls.idPedido == idPedido).first()
-
-    @classmethod
-    def get_active_for_table(
-        cls, db: Session, idMesa: uuid.UUID | str
-    ) -> Optional["Pedido"]:
-        """Busca o pedido atualmente aberto/em andamento para uma mesa."""
-        return (
-            db.query(cls)
-            .filter(
-                cls.idMesa == idMesa,
-                cls.status.notin_(["Fechado", "Cancelado"]),
-            )
-            .first()
-        )
-
-    @classmethod
-    def get_all_by_restaurant(
-        cls, db: Session, idRestaurante: uuid.UUID | str, status: str | None = None
-    ) -> list["Pedido"]:
-        """Lista pedidos de um restaurante, com filtro opcional de status."""
-        query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
-        if status:
-            query = query.filter(cls.status == status)
-        return query.order_by(cls.dataAbertura.desc()).all()
-
-    def update_stats(
-        self,
-        db: Session,
-        novo_status: str,
-        dataFechamento: datetime | None = None,
-        commit: bool = True,
-    ) -> "Pedido":
-        """Atualiza o status do pedido e opcionalmente a data de fechamento."""
-        self.status = novo_status
-        if dataFechamento is not None:
-            self.dataFechamento = dataFechamento
-        elif novo_status in ("Fechado", "Cancelado") and not self.dataFechamento:
-            self.dataFechamento = datetime.now(UTC)
-
+    def update_stats(self, db: Session, status: str, commit: bool = True) -> "Pedido":
+        self.status = status
+        if status in ("Fechado", "Cancelado") and not self.dataFechamento:
+            self.dataFechamento = datetime.now()
         if commit:
             db.commit()
             db.refresh(self)
-        else:
-            db.flush()
         return self
 
-    def update(
-        self,
-        db: Session,
-        idGarcom: uuid.UUID | str | None = None,
-        status: str | None = None,
-        dataFechamento: datetime | None = None,
-    ) -> "Pedido":
-        """Atualiza os dados de um pedido."""
-        if idGarcom is not None:
-            self.idGarcom = idGarcom
-        if status is not None:
-            self.status = status
-        if dataFechamento is not None:
-            self.dataFechamento = dataFechamento
+    def close(self, db: Session, commit: bool = True) -> "Pedido":
+        return self.update_stats(db, "Fechado", commit=commit)
 
-        db.commit()
-        db.refresh(self)
-        return self
+    def cancel(self, db: Session, commit: bool = True) -> "Pedido":
+        return self.update_stats(db, "Cancelado", commit=commit)

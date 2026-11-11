@@ -17,15 +17,19 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from src.core.realtime import realtime_hub
 from src.core.security import decodificar_token, exigir_funcao, get_user_from_token
 from src.database.connection import get_db
+<<<<<<< HEAD
 from src.models.Mesa import Mesa
 from src.models.Pagamento import Pagamento
 from src.models.Pedido import Pedido
 from src.models.Sessao import Sessao
+=======
+from src.models.ItemPedido import ItemPedido
+>>>>>>> perf/otimizacao-backend-rnf08
 from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
     AdicionarItensMesaRequest,
@@ -534,7 +538,18 @@ def listar_pedidos(
     """Lista pedidos do restaurante com filtros de status ou tipo (ativos/historico)."""
     rest_id = usuario.idRestaurante if usuario.funcao != "Adm" else (idRestaurante or usuario.idRestaurante)
 
-    query = db.query(Pedido).join(Mesa, Pedido.idMesa == Mesa.idMesa).outerjoin(Usuario, Pedido.idGarcom == Usuario.idUsuario)
+    query = (
+        db.query(Pedido)
+        .options(
+            joinedload(Pedido.mesa),
+            joinedload(Pedido.garcom),
+            joinedload(Pedido.usuario_fechamento),
+            selectinload(Pedido.itens).joinedload(ItemPedido.cardapio),
+            selectinload(Pedido.pagamentos),
+        )
+        .join(Mesa, Pedido.idMesa == Mesa.idMesa)
+        .outerjoin(Usuario, Pedido.idGarcom == Usuario.idUsuario)
+    )
     if rest_id:
         query = query.filter(Pedido.idRestaurante == rest_id)
     if status:

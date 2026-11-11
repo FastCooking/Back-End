@@ -7,10 +7,12 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -21,6 +23,13 @@ from src.database.connection import Base
 
 class ItemPedido(Base):
     __tablename__ = "ItemPedido"
+    __table_args__ = (
+        Index("ix_item_pedido_kds", "idPedido", "status", "liberadoParaPreparo"),
+        Index("ix_item_pedido_status", "status"),
+        Index("ix_item_pedido_delivery", "deliveryStatus", "claimedByWaiterId"),
+        Index("ix_item_pedido_data_criacao", "dataCriacao"),
+        Index("ix_item_pedido_cardapio", "idCardapio"),
+    )
 
     idItemPedido: uuid.UUID = Column(
         UUID(as_uuid=True),
@@ -40,14 +49,12 @@ class ItemPedido(Base):
     )
     quantidade: int = Column(Integer, nullable=False, default=1)
     precoUnitario: float = Column(Numeric(10, 2), nullable=False)
-    status: str = Column(String(30), nullable=False, default="Pendente")
     observacao: str | None = Column(Text, nullable=True)
+    status: str = Column(String(30), nullable=False, default="Pendente")
     categoria: str | None = Column(String(50), nullable=True)
-    prioridade: int = Column(Integer, default=1)
-    dataCriacao = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(UTC),
+    prioridade: int = Column(Integer, nullable=False, default=1)
+    dataCriacao: datetime = Column(
+        DateTime, nullable=False, default=datetime.now, server_default=func.now()
     )
     liberadoParaPreparo: bool = Column(
         Boolean,
@@ -91,7 +98,10 @@ class ItemPedido(Base):
     )
 
     def __repr__(self):
-        return f"<ItemPedido(id={self.idItemPedido}, pedido={self.idPedido}, cardapio={self.idCardapio}, status='{self.status}')>"
+        return (
+            f"<ItemPedido(id={self.idItemPedido}, pedido={self.idPedido}, "
+            f"cardapio={self.idCardapio}, qtd={self.quantidade}, status='{self.status}')>"
+        )
 
     @classmethod
     def create(
@@ -126,72 +136,25 @@ class ItemPedido(Base):
         if commit:
             db.commit()
             db.refresh(item)
-        else:
-            db.flush()
         return item
 
     @classmethod
     def get_by_id(
         cls, db: Session, idItemPedido: uuid.UUID | str
     ) -> Optional["ItemPedido"]:
-        """Busca item pelo ID."""
         return db.query(cls).filter(cls.idItemPedido == idItemPedido).first()
 
     @classmethod
     def get_by_pedido(
         cls, db: Session, idPedido: uuid.UUID | str
     ) -> list["ItemPedido"]:
-        """Lista todos os itens de um pedido."""
         return db.query(cls).filter(cls.idPedido == idPedido).all()
 
-    @classmethod
-    def get_pendents_kitchen(
-        cls, db: Session, idRestaurante: uuid.UUID | str
-    ) -> list["ItemPedido"]:
-        """Lista itens com status 'Pendente' ou 'Em preparo' da cozinha de um restaurante."""
-        from src.models.Pedido import Pedido
-
-        return (
-            db.query(cls)
-            .join(Pedido, cls.idPedido == Pedido.idPedido)
-            .filter(
-                Pedido.idRestaurante == idRestaurante,
-                cls.status.in_(["Pendente", "Em preparo"]),
-            )
-            .order_by(Pedido.dataAbertura.asc(), cls.idItemPedido.asc())
-            .all()
-        )
-
     def update_stats(
-        self, db: Session, novo_status: str, commit: bool = True
+        self, db: Session, status: str, commit: bool = True
     ) -> "ItemPedido":
-        """Atualiza o status de preparo/entrega do item"""
-        self.status = novo_status
+        self.status = status
         if commit:
             db.commit()
             db.refresh(self)
-        else:
-            db.flush()
-        return self
-
-    def update(
-        self,
-        db: Session,
-        quantidade: int | None = None,
-        precoUnitario: float | None = None,
-        status: str | None = None,
-        observacao: str | None = None,
-    ) -> "ItemPedido":
-        """Atualiza os campos do item do pedido."""
-        if quantidade is not None:
-            self.quantidade = quantidade
-        if precoUnitario is not None:
-            self.precoUnitario = precoUnitario
-        if status is not None:
-            self.status = status
-        if observacao is not None:
-            self.observacao = observacao
-
-        db.commit()
-        db.refresh(self)
         return self
