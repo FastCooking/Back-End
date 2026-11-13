@@ -5,6 +5,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
+from src.core.audit_logger import (
+    log_abertura_mesa,
+    log_edicao_mesa,
+    log_exclusao_mesa,
+)
 from src.core.realtime import realtime_hub
 from src.core.security import exigir_funcao
 from src.database.connection import get_db
@@ -99,11 +104,16 @@ def obter_mesa(
     response_model=MesaResponse,
     summary="Atualizar dados da mesa",
 )
+@router.patch(
+    "/{idMesa}",
+    response_model=MesaResponse,
+    summary="Atualizar dados da mesa",
+)
 def atualizar_mesa(
     idMesa: UUID,
     dados: MesaUpdate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     mesa = Mesa.get_by_id(db, idMesa)
     if not mesa:
@@ -118,7 +128,19 @@ def atualizar_mesa(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Mesa número {dados.numero} já existe neste restaurante.",
             )
+
+    dados_anteriores = {"numero": mesa.numero, "status": mesa.status}
     mesa.update(db, numero=dados.numero, status=dados.status)
+    dados_novos = {"numero": mesa.numero, "status": mesa.status}
+
+    # Registro de auditoria da alteração de mesa vinculada ao usuário autenticado
+    log_edicao_mesa(
+        id_usuario=usuario.idUsuario,
+        funcao_usuario=usuario.funcao,
+        id_mesa=mesa.idMesa,
+        dados_anteriores=dados_anteriores,
+        dados_novos=dados_novos,
+    )
     return mesa
 
 
@@ -130,7 +152,7 @@ def atualizar_mesa(
 def excluir_mesa(
     idMesa: UUID,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
 ):
     mesa = Mesa.get_by_id(db, idMesa)
     if not mesa:
@@ -138,7 +160,16 @@ def excluir_mesa(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Mesa não encontrada.",
         )
+    numero_mesa = mesa.numero
     mesa.delete(db)
+
+    # Registro de auditoria de exclusão de mesa vinculada ao usuário autenticado
+    log_exclusao_mesa(
+        id_usuario=usuario.idUsuario,
+        funcao_usuario=usuario.funcao,
+        id_mesa=idMesa,
+        numero_mesa=numero_mesa,
+    )
 
 
 @router.get(
@@ -196,6 +227,13 @@ def abrir_mesa(
         )
 
     if mesa:
+        log_abertura_mesa(
+            id_usuario=None,
+            funcao_usuario=None,
+            id_mesa=mesa.idMesa,
+            sessao_id=str(sessao.idSessao),
+        )
+
         if mesa.status != "Indisponivel":
             mesa.status = "Indisponivel"
             db.commit()

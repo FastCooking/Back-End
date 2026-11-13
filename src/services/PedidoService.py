@@ -6,6 +6,10 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
+from src.core.audit_logger import (
+    log_cancelamento_assistido,
+    log_cancelamento_cliente,
+)
 from src.core.events import domain_event_bus
 from src.core.realtime import realtime_hub
 from src.models.AuditoriaCancelamentoItem import AuditoriaCancelamentoItem
@@ -746,6 +750,25 @@ class PedidoService:
                 motivo=motivo,
             )
             self.db.add(auditoria)
+
+            # Registro de auditoria em arquivo particionado YYYY/MM/dd e console
+            if origem == "CLIENTE":
+                log_cancelamento_cliente(
+                    sessao_id=pedido.sessao_id,
+                    id_mesa=pedido.idMesa,
+                    id_pedido=pedido.idPedido,
+                    id_item_pedido=item.idItemPedido,
+                )
+            else:
+                log_cancelamento_assistido(
+                    id_usuario=usuario.idUsuario if usuario else None,
+                    funcao_usuario=usuario.funcao if usuario else None,
+                    id_pedido=pedido.idPedido,
+                    id_mesa=pedido.idMesa,
+                    id_item_pedido=item.idItemPedido,
+                    motivo=motivo,
+                )
+
             rf08_res = RF08Service.reavaliar_comanda(self.db, pedido)
             self.db.flush()
             self.db.commit()

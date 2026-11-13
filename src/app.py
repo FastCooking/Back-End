@@ -1,5 +1,7 @@
+import asyncio
 import os
 import sys
+import time
 from pathlib import Path
 
 import uvicorn
@@ -30,6 +32,7 @@ from src.controllers.MesaController import router as mesa_router
 from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
+from src.core.audit_logger import limpar_logs_antigos, rotina_diaria_limpeza_logs
 from src.core.bootstrap import executar_migracoes_seguras, garantir_usuario_admin
 from src.database.connection import get_db, test_connection
 from src.services.DeliveryService import DeliveryDomainError
@@ -46,7 +49,26 @@ async def lifespan(app: FastAPI):
         garantir_usuario_admin()
     except Exception as exc:  # noqa: BLE001
         print(f"[BOOTSTRAP] Aviso/Erro ao verificar usuário padrão: {exc}")
-    yield
+
+    # Limpeza preventiva de logs de auditoria com mais de 90 dias
+    try:
+        limpar_logs_antigos(dias=90)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[AUDITORIA] Aviso na limpeza inicial de logs: {exc}")
+
+    # Tarefa em background para rotina diária de limpeza
+    task_limpeza = asyncio.create_task(
+        rotina_diaria_limpeza_logs(intervalo_horas=24, dias_retencao=90)
+    )
+
+    try:
+        yield
+    finally:
+        task_limpeza.cancel()
+        try:
+            await task_limpeza
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -86,6 +108,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests_middleware(request: Request, call_next):
+    inicio = time.perf_counter()
+    response = await call_next(request)
+    duracao_ms = (time.perf_counter() - inicio) * 1000
+    ip_cliente = request.client.host if request.client else "desconhecido"
+    print(
+        f"[HTTP] {request.method} {request.url.path} - "
+        f"Status: {response.status_code} ({duracao_ms:.1f}ms) - IP: {ip_cliente}"
+    )
+    return response
 
 
 @app.exception_handler(DeliveryDomainError)
