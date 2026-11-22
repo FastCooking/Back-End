@@ -398,22 +398,11 @@ class DeliveryService:
                     else item.claimedByWaiterId
                 )
 
-                is_active_delivery = assigned_waiter_id is not None and (
-                    item.deliveryStatus in ACTIVE_DELIVERY_STATES
-                    or (
-                        entrega is not None and entrega.status in ACTIVE_DELIVERY_STATES
-                    )
-                )
-
-                if not is_active_delivery:
-                    self.db.rollback()
-                    raise DeliveryDomainError(
-                        status_code=status.HTTP_409_CONFLICT,
-                        code="DELIVERY_NOT_IN_PROGRESS",
-                        message="O item informado não possui uma entrega ativa em andamento.",
-                    )
-
-                if waiter.funcao == "Garcom" and assigned_waiter_id != waiter.idUsuario:
+                if (
+                    assigned_waiter_id is not None
+                    and waiter.funcao == "Garcom"
+                    and assigned_waiter_id != waiter.idUsuario
+                ):
                     self.db.rollback()
                     raise DeliveryDomainError(
                         status_code=status.HTTP_409_CONFLICT,
@@ -421,7 +410,41 @@ class DeliveryService:
                         message="Apenas o garçom responsável pela entrega pode concluí-la.",
                     )
 
+                is_active_delivery = assigned_waiter_id is not None and (
+                    item.deliveryStatus in ACTIVE_DELIVERY_STATES
+                    or (
+                        entrega is not None and entrega.status in ACTIVE_DELIVERY_STATES
+                    )
+                )
+                is_ready_unclaimed = item.status == "Pronto" and (
+                    item.deliveryStatus in (
+                        None,
+                        DeliveryState.READY.value,
+                        DeliveryState.WAITING_DELIVERY_PICKUP.value,
+                    )
+                    or (
+                        entrega is not None
+                        and entrega.status in (
+                            DeliveryState.READY.value,
+                            DeliveryState.WAITING_DELIVERY_PICKUP.value,
+                        )
+                    )
+                )
+
+                if not is_active_delivery and not is_ready_unclaimed:
+                    self.db.rollback()
+                    raise DeliveryDomainError(
+                        status_code=status.HTTP_409_CONFLICT,
+                        code="DELIVERY_NOT_IN_PROGRESS",
+                        message="O item informado não possui uma entrega ativa em andamento.",
+                    )
+
                 now_utc = datetime.now(UTC)
+                effective_waiter_id = assigned_waiter_id or waiter.idUsuario
+                if item.claimedByWaiterId is None:
+                    item.claimedByWaiterId = effective_waiter_id
+                if item.claimedAt is None:
+                    item.claimedAt = now_utc
                 item.status = "Entregue"
                 item.deliveryStatus = DeliveryState.DELIVERED.value
                 item.deliveredAt = now_utc
@@ -431,7 +454,7 @@ class DeliveryService:
                         idRestaurante=pedido.idRestaurante,
                         idPedido=pedido.idPedido,
                         idItemPedido=item.idItemPedido,
-                        idGarcom=assigned_waiter_id,
+                        idGarcom=effective_waiter_id,
                         status=DeliveryState.DELIVERED.value,
                         dataCriacao=item.dataCriacao or now_utc,
                         claimedAt=item.claimedAt or now_utc,
@@ -439,6 +462,10 @@ class DeliveryService:
                     )
                     self.db.add(entrega)
                 else:
+                    if entrega.idGarcom is None:
+                        entrega.idGarcom = effective_waiter_id
+                    if entrega.claimedAt is None:
+                        entrega.claimedAt = now_utc
                     entrega.status = DeliveryState.DELIVERED.value
                     entrega.deliveredAt = now_utc
 

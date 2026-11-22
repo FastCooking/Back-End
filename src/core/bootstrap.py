@@ -121,7 +121,42 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                         ADD COLUMN IF NOT EXISTS "idUsuarioFechamento" UUID
                         REFERENCES "Usuarios"("idUsuario")
                         ON UPDATE CASCADE ON DELETE SET NULL;
+
+                        ALTER TABLE "Pedido"
+                        ADD COLUMN IF NOT EXISTS "desconto" NUMERIC(10, 2) NOT NULL DEFAULT 0.0;
+
+                        ALTER TABLE "Pedido"
+                        ADD COLUMN IF NOT EXISTS "tipoDesconto" VARCHAR(20);
+
+                        ALTER TABLE "Pedido"
+                        ADD COLUMN IF NOT EXISTS "valorDescontoInformado" NUMERIC(10, 2);
+
+                        ALTER TABLE "Pedido"
+                        ADD COLUMN IF NOT EXISTS "motivoDesconto" VARCHAR(255);
+
+                        ALTER TABLE "Pedido"
+                        ADD COLUMN IF NOT EXISTS "idGerenteDesconto" UUID
+                        REFERENCES "Usuarios"("idUsuario")
+                        ON UPDATE CASCADE ON DELETE SET NULL;
+
+                        ALTER TABLE "Pedido"
+                        ADD COLUMN IF NOT EXISTS "dataDesconto" TIMESTAMP;
                     END IF;
+
+                    CREATE TABLE IF NOT EXISTS "LogDesconto" (
+                        "idLogDesconto" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        "idRestaurante" UUID NOT NULL REFERENCES "Restaurante"("idRestaurante") ON UPDATE CASCADE ON DELETE CASCADE,
+                        "idPedido" UUID REFERENCES "Pedido"("idPedido") ON UPDATE CASCADE ON DELETE CASCADE,
+                        "idUsuario" UUID REFERENCES "Usuarios"("idUsuario") ON UPDATE CASCADE ON DELETE SET NULL,
+                        "usuario" VARCHAR(255) NOT NULL,
+                        "funcaoUsuario" VARCHAR(50),
+                        "valorDesconto" NUMERIC(10, 2) NOT NULL DEFAULT 0.0,
+                        "tipoDesconto" VARCHAR(20),
+                        "motivo" TEXT,
+                        "sucesso" BOOLEAN NOT NULL DEFAULT TRUE,
+                        "motivoFalha" VARCHAR(255),
+                        "dataHora" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
 
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'Cardapio'
@@ -151,6 +186,8 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                 CREATE INDEX IF NOT EXISTS ix_mesa_restaurante_status ON "Mesa" ("idRestaurante", "status");
                 CREATE INDEX IF NOT EXISTS ix_cardapio_rest_status_cat ON "Cardapio" ("idRestaurante", "status", "categoria");
                 CREATE INDEX IF NOT EXISTS ix_pagamento_pedido ON "Pagamento" ("idPedido");
+                CREATE INDEX IF NOT EXISTS "idx_LogDesconto_Pedido" ON "LogDesconto" ("idPedido");
+                CREATE INDEX IF NOT EXISTS "idx_LogDesconto_Restaurante" ON "LogDesconto" ("idRestaurante");
             """))
             db.commit()
             logger.info("Migrações seguras executadas com sucesso.")

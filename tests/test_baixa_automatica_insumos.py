@@ -114,7 +114,7 @@ def test_criacao_valida_estoque_antes_de_abrir_pedido(
     assert float(cenario["insumo"].quantidadeEstoque) == 1
 
 
-def test_baixa_ocorre_apenas_ao_iniciar_preparo_e_indisponibiliza_cardapio(
+def test_baixa_ocorre_apenas_ao_ficar_pronto_e_indisponibiliza_cardapio(
     client, db_session, cenario_estoque_pedido
 ):
     cenario = cenario_estoque_pedido
@@ -135,8 +135,9 @@ def test_baixa_ocorre_apenas_ao_iniciar_preparo_e_indisponibiliza_cardapio(
     db_session.refresh(cenario["cardapio"])
     item = db_session.query(ItemPedido).filter_by(idItemPedido=item_id).one()
     assert item.status == "Em preparo"
-    assert float(cenario["insumo"].quantidadeEstoque) == 1
-    assert cenario["cardapio"].status is False
+    # Em preparo ainda não realiza a baixa do estoque
+    assert float(cenario["insumo"].quantidadeEstoque) == 5
+    assert cenario["cardapio"].status is True
 
     ready = client.patch(
         f"/pedidos/itens/{item_id}/status",
@@ -145,7 +146,9 @@ def test_baixa_ocorre_apenas_ao_iniciar_preparo_e_indisponibiliza_cardapio(
     )
     assert ready.status_code == 200
     db_session.refresh(cenario["insumo"])
+    db_session.refresh(cenario["cardapio"])
     assert float(cenario["insumo"].quantidadeEstoque) == 1
+    assert cenario["cardapio"].status is False
 
     unavailable_order = _criar_pedido(client, cenario)
     assert unavailable_order.status_code == 400
@@ -177,25 +180,33 @@ def test_adicao_a_pedido_existente_tambem_valida_estoque(
     assert float(cenario["insumo"].quantidadeEstoque) == 1
 
 
-def test_preparo_sem_saldo_suficiente_nao_muda_status_nem_estoque(
+def test_pronto_sem_saldo_suficiente_nao_muda_status_nem_estoque(
     client, db_session, cenario_estoque_pedido
 ):
     cenario = cenario_estoque_pedido
     response = _criar_pedido(client, cenario)
     item_id = uuid.UUID(response.json()["itens"][0]["idItemPedido"])
-    cenario["insumo"].quantidadeEstoque = 1
-    db_session.commit()
 
     prep = client.patch(
         f"/pedidos/itens/{item_id}/status",
         json={"status": "Em preparo"},
         headers=cenario["headers_cozinha"],
     )
+    assert prep.status_code == 200
 
-    assert prep.status_code == 400
+    cenario["insumo"].quantidadeEstoque = 1
+    db_session.commit()
+
+    ready = client.patch(
+        f"/pedidos/itens/{item_id}/status",
+        json={"status": "Pronto"},
+        headers=cenario["headers_cozinha"],
+    )
+
+    assert ready.status_code == 400
     db_session.refresh(cenario["insumo"])
     item = db_session.query(ItemPedido).filter_by(idItemPedido=item_id).one()
-    assert item.status == "Pendente"
+    assert item.status == "Em preparo"
     assert float(cenario["insumo"].quantidadeEstoque) == 1
 
 

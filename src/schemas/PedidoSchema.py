@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -24,12 +23,17 @@ class AdicionarItensMesaRequest(BaseModel):
 
 
 class RemoverItemRequest(BaseModel):
-    motivo: str = Field(..., min_length=1)
+    motivo: str | None = Field(default=None)
+    justificativa: str | None = Field(default=None)
 
-    @field_validator("motivo")
+    @field_validator("motivo", "justificativa")
     @classmethod
-    def validar_motivo(cls, motivo: str) -> str:
-        return motivo.strip()
+    def validar_texto(cls, val: str | None) -> str | None:
+        return val.strip() if val is not None else None
+
+    @property
+    def motivo_efetivo(self) -> str | None:
+        return self.motivo if self.motivo is not None else self.justificativa
 
 
 class ConfirmacaoCancelamentoCliente(BaseModel):
@@ -82,6 +86,12 @@ class PedidoResponseSchema(BaseModel):
 
 class ItemPedidoQuantidadeUpdate(BaseModel):
     quantidade: int = Field(..., ge=0, description="Nova quantidade do item (0 cancela o item)")
+    motivo: str | None = None
+
+    @field_validator("motivo")
+    @classmethod
+    def validar_motivo(cls, motivo: str | None) -> str | None:
+        return motivo.strip() if motivo is not None else None
 
 
 class ItemCancelamentoRequest(BaseModel):
@@ -137,9 +147,3 @@ class LogDescontoResponseSchema(BaseModel):
     dataHora: datetime
 
     model_config = ConfigDict(from_attributes=True)
-    motivo: str | None = None
-
-    @field_validator("motivo")
-    @classmethod
-    def validar_motivo(cls, motivo: str | None) -> str | None:
-        return motivo.strip() if motivo is not None else None

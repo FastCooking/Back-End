@@ -20,6 +20,11 @@ class CardapioUpdate(BaseModel):
     tempoPreparo: int | None = Field(default=None, gt=0, description="Tempo estimado de preparo em minutos")
     pathImage: str | None = None
     descricao: str | None = None
+    status: bool | None = None
+
+
+class CardapioStatusUpdate(BaseModel):
+    status: bool = Field(..., description="Novo status de disponibilidade do item (True=Disponível, False=Indisponível)")
 
 
 class CardapioResponse(BaseModel):

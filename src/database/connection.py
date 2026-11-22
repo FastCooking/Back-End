@@ -41,10 +41,12 @@ from src.models.Entrega import Entrega  # noqa: F401
 from src.models.Estoque import Estoque  # noqa: F401
 from src.models.FichaTecnica import FichaTecnica  # noqa: F401
 from src.models.ItemPedido import ItemPedido  # noqa: F401
+from src.models.LogDesconto import LogDesconto  # noqa: F401
 from src.models.Mesa import Mesa  # noqa: F401
 from src.models.Pagamento import Pagamento  # noqa: F401
 from src.models.Pedido import Pedido  # noqa: F401
 from src.models.Restaurante import Restaurante  # noqa: F401
+from src.models.Sessao import Sessao  # noqa: F401
 from src.models.Usuario import Usuario  # noqa: F401
 
 

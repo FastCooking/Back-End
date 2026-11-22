@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session, joinedload
 
 from src.core.audit_logger import (
@@ -11,7 +12,7 @@ from src.core.audit_logger import (
     log_exclusao_mesa,
 )
 from src.core.realtime import realtime_hub
-from src.core.security import exigir_funcao
+from src.core.security import exigir_funcao, get_user_from_token
 from src.database.connection import get_db
 from src.models.Mesa import Mesa
 from src.models.Pedido import Pedido
@@ -24,6 +25,21 @@ from src.services.SessaoService import SessaoService
 
 router = APIRouter(prefix="/mesas", tags=["Mesas"])
 
+security_optional = HTTPBearer(auto_error=False)
+
+
+def get_optional_user(
+    credenciais: HTTPAuthorizationCredentials | None = Depends(security_optional),
+    db: Session = Depends(get_db),
+) -> Usuario | None:
+    if credenciais is None:
+        return None
+    try:
+        return get_user_from_token(credenciais.credentials, db)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # Armazenamento em memória de chamados ativos por mesa: { str(idMesa): dict }
 chamados_ativos: dict[str, dict] = {}
 
@@ -35,12 +51,19 @@ chamados_ativos: dict[str, dict] = {}
     description="Retorna a lista de mesas cadastradas no restaurante informado.",
 )
 def listar_mesas(
-    idRestaurante: UUID = Query(..., description="ID do restaurante"),
+    idRestaurante: UUID | None = Query(None, description="ID do restaurante"),
     status: str | None = Query(None, description="Filtro opcional por status"),
     db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(get_optional_user),
 ):
+    rest_id = idRestaurante or (usuario.idRestaurante if usuario else None)
+    if rest_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="O parâmetro idRestaurante é obrigatório.",
+        )
     SessaoService.expirar_sessoes_inativas(db, limite_minutos=10)
-    mesas = Mesa.get_all_by_restaurant(db, idRestaurante, status)
+    mesas = Mesa.get_all_by_restaurant(db, rest_id, status)
     resultado = []
     for m in mesas:
         ped = Pedido.get_active_for_table(db, m.idMesa)
@@ -355,10 +378,11 @@ def atender_chamado(
 
 @router.get("/chamados/ativos")
 def listar_chamados_ativos(
-    idRestaurante: UUID = Query(..., description="ID do restaurante"),
+    idRestaurante: UUID | None = Query(None, description="ID do restaurante"),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ):
-    str_restaurante = str(idRestaurante)
+    rest_id = idRestaurante or usuario.idRestaurante
+    str_restaurante = str(rest_id)
     chamados = [
         c for c in chamados_ativos.values()
         if c.get("idRestaurante") == str_restaurante

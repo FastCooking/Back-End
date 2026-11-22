@@ -12,6 +12,7 @@ from src.models.Usuario import Usuario
 from src.schemas.CardapioSchema import (
     CardapioCreate,
     CardapioResponse,
+    CardapioStatusUpdate,
     CardapioUpdate,
 )
 from src.services.CardapioService import CardapioService
@@ -154,19 +155,52 @@ async def editar_item(
             dados_dict["preco"] = float(form["preco"])
         if form.get("categoria"):
             dados_dict["categoria"] = form["categoria"]
+        if form.get("tempoPreparo"):
+            dados_dict["tempoPreparo"] = int(form["tempoPreparo"])
         if "descricao" in form:
             dados_dict["descricao"] = form["descricao"] or None
         if path_image is not None or "pathImage" in form or file:
             dados_dict["pathImage"] = path_image
+        status_raw = form.get("status") if form.get("status") is not None else form.get("disponivel")
+        if status_raw is not None:
+            dados_dict["status"] = str(status_raw).strip().lower() in ("true", "1", "yes", "sim")
 
         dados = CardapioUpdate(**dados_dict)
     else:
         body = await request.json()
+        if "disponivel" in body and "status" not in body:
+            body["status"] = bool(body["disponivel"])
         dados = CardapioUpdate(**body)
 
     return service.editar(
         idCardapio=idCardapio,
         dados=dados,
+        usuario=usuario,
+    )
+
+
+@router.patch(
+    "/{idCardapio}/status",
+    response_model=CardapioResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Alternar status de disponibilidade do item do cardápio",
+)
+@router.put(
+    "/{idCardapio}/status",
+    response_model=CardapioResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Alternar status de disponibilidade do item do cardápio",
+)
+def alterar_status_item(
+    idCardapio: uuid.UUID,
+    dados: CardapioStatusUpdate,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
+):
+    service = CardapioService(db)
+    return service.alterar_status(
+        idCardapio=idCardapio,
+        novo_status=dados.status,
         usuario=usuario,
     )
 

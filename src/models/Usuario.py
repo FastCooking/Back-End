@@ -112,6 +112,7 @@ class Usuario(Base):
     def update(
         self,
         db: Session,
+        idRestaurante: uuid.UUID | str | None = None,
         nome: str | None = None,
         cpf: str | None = None,
         email: str | None = None,
@@ -119,6 +120,8 @@ class Usuario(Base):
         funcao: str | None = None,
     ) -> "Usuario":
         """Atualiza os dados de um funcionário."""
+        if idRestaurante is not None:
+            self.idRestaurante = idRestaurante
         if nome is not None:
             self.nome = nome
         if cpf is not None:

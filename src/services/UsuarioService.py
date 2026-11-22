@@ -179,6 +179,7 @@ class UsuarioService:
 
         return usuario.update(
             db=self.db,
+            idRestaurante=data.idRestaurante,
             nome=data.nome,
             cpf=data.cpf,
             email=data.email,

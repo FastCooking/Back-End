@@ -3,793 +3,6 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
-from fastapi import status as http_status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from fastapi.websockets import WebSocketDisconnect
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
-
-from src.core.realtime import realtime_hub
-from src.core.security import decodificar_token, exigir_funcao, get_user_from_token
-from src.database.connection import get_db
-from src.models.Usuario import Usuario
-from src.schemas.PedidoSchema import (
-    DescontoApplyRequest,
-    DescontoRemoverRequest,
-    ItemCancelamentoRequest,
-    ItemPedidoQuantidadeUpdate,
-    ItemPedidoStatusUpdate,
-    PedidoCreate,
-    PedidoItemCreate,
-)
-from src.services.PedidoService import PedidoService
-
-router = APIRouter(prefix="/pedidos", tags=["Pedidos"])
-
-security_optional = HTTPBearer(auto_error=False)
-
-
-def get_optional_user(
-    credenciais: HTTPAuthorizationCredentials | None = Depends(security_optional),
-    db: Session = Depends(get_db),
-) -> Usuario | None:
-    if credenciais is None:
-        return None
-    try:
-        return get_user_from_token(credenciais.credentials, db)
-    except Exception:  # noqa: BLE001
-        return None
-
-
-@router.post("", status_code=http_status.HTTP_201_CREATED)
-def criar_pedido(
-    dados: PedidoCreate,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
-) -> dict:
-    service = PedidoService(db)
-    result = service.create(dados, usuario)
-    background_tasks.add_task(service.publish_events, result.pop("events"))
-    return result
-
-
-@router.post("/{idPedido}/itens", status_code=http_status.HTTP_201_CREATED)
-def adicionar_itens_ao_pedido(
-    idPedido: uuid.UUID,
-    itens: list[PedidoItemCreate],
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(get_optional_user),
-) -> dict:
-    service = PedidoService(db)
-    result = service.add_items(idPedido, itens, usuario)
-    background_tasks.add_task(service.publish_events, result.pop("events"))
-    return result
-
-
-@router.get("/{idPedido}")
-def obter_pedido(
-    idPedido: uuid.UUID,
-    db: Session = Depends(get_db),
-) -> dict:
-    service = PedidoService(db)
-    return service.get_order(idPedido)
-
-
-@router.get("/{idPedido}/tracking")
-def obter_tracking_pedido(
-    idPedido: uuid.UUID,
-    db: Session = Depends(get_db),
-) -> dict:
-    service = PedidoService(db)
-    return service.get_order_tracking(idPedido)
-
-
-@router.websocket("/tracking/{idPedido}")
-@router.websocket("/ws/tracking/{idPedido}")
-async def tracking_websocket(
-    websocket: WebSocket,
-    idPedido: uuid.UUID,
-    db: Session = Depends(get_db),
-) -> None:
-    await handle_tracking_websocket(websocket, idPedido, db)
-
-
-async def handle_tracking_websocket(
-    websocket: WebSocket,
-    idPedido: uuid.UUID,
-    db: Session,
-) -> None:
-    await websocket.accept()
-    service = PedidoService(db)
-    snapshot = service.get_order_tracking(idPedido)
-    if snapshot.get("type") == "ERROR":
-        await websocket.send_json(snapshot)
-        await websocket.close(code=4404)
-        return
-
-    await realtime_hub.connect_tracking(
-        websocket=websocket,
-        order_id=idPedido,
-        snapshot_factory=lambda: service.get_order_tracking(idPedido),
-    )
-
-    try:
-        while True:
-            try:
-                msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
-                if msg == "ping":
-                    await websocket.send_text("pong")
-            except TimeoutError:
-                pass
-    except WebSocketDisconnect:
-        pass
-    except Exception:  # noqa: BLE001
-        await websocket.close(code=1011)
-    finally:
-        await realtime_hub.disconnect_tracking(websocket)
-
-
-@router.patch("/itens/{idItemPedido}/status")
-def alterar_status_item(
-    idItemPedido: uuid.UUID,
-    dados: ItemPedidoStatusUpdate,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Cozinheiro")),
-) -> dict:
-    service = PedidoService(db)
-    result = service.update_item_status(idItemPedido, dados.status, usuario)
-    background_tasks.add_task(service.publish_events, [result.pop("event")])
-    return result
-
-
-@router.patch("/itens/{idItemPedido}/quantidade")
-def alterar_quantidade_item(
-    idItemPedido: uuid.UUID,
-    dados: ItemPedidoQuantidadeUpdate,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
-) -> dict:
-    service = PedidoService(db)
-    result = service.update_item_quantity(idItemPedido, dados.quantidade, usuario)
-    background_tasks.add_task(service.publish_events, [result.pop("event")])
-    return result
-
-
-@router.patch("/itens/{idItemPedido}/liberar-sobremesa")
-def liberar_sobremesa(
-    idItemPedido: uuid.UUID,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom")),
-) -> dict:
-    service = PedidoService(db)
-    result = service.liberar_sobremesa(idItemPedido, usuario)
-    background_tasks.add_task(
-        service.publish_events,
-        result.pop("events"),
-    )
-    return result
-
-
-@router.patch("/itens/{idItemPedido}/cancelar")
-def cancelar_item(
-    idItemPedido: uuid.UUID,
-    background_tasks: BackgroundTasks,
-    dados: ItemCancelamentoRequest | None = None,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
-) -> dict:
-    service = PedidoService(db)
-    motivo = (dados.justificativa or dados.motivo) if dados else None
-    result = service.cancelar_item(idItemPedido, usuario, motivo=motivo)
-    background_tasks.add_task(service.publish_events, [result.pop("event")])
-    return result
-
-@router.post("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
-@router.patch("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
-def aplicar_desconto_pedido(
-    idPedido: uuid.UUID,
-    dados: DescontoApplyRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
-) -> dict:
-    """Aplica desconto na comanda condicionado à autenticação de senha do gerente (RF13)."""
-    service = PedidoService(db)
-    result = service.aplicar_desconto(idPedido, dados, usuario)
-    if "event" in result:
-        event = result.pop("event")
-        background_tasks.add_task(realtime_hub.publish_event, usuario.idRestaurante, event)
-    return result
-
-
-@router.delete("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
-def remover_desconto_pedido(
-    idPedido: uuid.UUID,
-    dados: DescontoRemoverRequest | None = None,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
-) -> dict:
-    """Remove desconto concedido à comanda."""
-    service = PedidoService(db)
-    return service.remover_desconto(idPedido, dados, usuario)
-
-
-@router.get("/{idPedido}/desconto/logs")
-@router.get("/{idPedido}/logs-desconto")
-def obter_logs_desconto_pedido(
-    idPedido: uuid.UUID,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
-) -> list[dict]:
-    """Lista histórico e logs de tentativas e concessões de desconto no pedido."""
-    service = PedidoService(db)
-    return service.listar_logs_desconto(idPedido=idPedido, idRestaurante=usuario.idRestaurante)
-
-
-@router.get("/logs-desconto/restaurante")
-@router.get("/logs-desconto")
-def obter_logs_desconto_restaurante(
-    idRestaurante: uuid.UUID | None = None,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
-) -> list[dict]:
-    """Lista histórico e logs de tentativas e concessões de desconto no restaurante."""
-    service = PedidoService(db)
-    rest_id = usuario.idRestaurante if usuario.funcao != "Adm" else (idRestaurante or usuario.idRestaurante)
-    return service.listar_logs_desconto(idRestaurante=rest_id)
-
-
-
-from pydantic import BaseModel
-
-from src.models.Mesa import Mesa
-from src.models.Pagamento import Pagamento
-from src.models.Pedido import Pedido
-from src.models.Sessao import Sessao
-
-
-class PagamentoCreateRequest(BaseModel):
-    formaPagamento: str
-    valor: float | None = None
-    cancelar_pendentes: bool = False
-
-
-@router.post("/{idPedido}/pagamento", status_code=http_status.HTTP_201_CREATED)
-def registrar_pagamento(
-    idPedido: uuid.UUID,
-    dados: PagamentoCreateRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
-) -> dict:
-    service = PedidoService(db)
-    pedido = Pedido.get_by_id(db, idPedido)
-    if not pedido or pedido.idRestaurante != usuario.idRestaurante:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Pedido não encontrado.",
-        )
-
-    if pedido.status in ("Fechado", "Cancelado"):
-        raise HTTPException(
-            status_code=http_status.HTTP_409_CONFLICT,
-            detail="Este pedido já foi encerrado.",
-        )
-
-    # 1. Validação de itens: não pode fechar se houver item "Em preparo"
-    itens_em_preparo = [it for it in pedido.itens if it.status == "Em preparo"]
-    if itens_em_preparo:
-        raise HTTPException(
-            status_code=http_status.HTTP_409_CONFLICT,
-            detail="Não é possível fechar a mesa com itens em preparo na cozinha. Aguarde a finalização.",
-        )
-
-    # Se houver itens "Pendente", eles são cancelados para realizar o fechamento da mesa
-    itens_pendentes = [it for it in pedido.itens if it.status == "Pendente"]
-    cancel_events = []
-    for it in itens_pendentes:
-        it.update_stats(db, "Cancelado", commit=False)
-        cancel_events.append({
-            "type": "item.cancelled",
-            "idPedido": str(pedido.idPedido),
-            "idItemPedido": str(it.idItemPedido),
-            "nome": it.cardapio.nome if it.cardapio else "Item",
-            "usuario": usuario.nome,
-            "motivo": "Cancelado automaticamente no fechamento da comanda",
-        })
-
-    # Calcula valor total considerando itens não cancelados e desconto concedido
-    subtotal_pedido = sum(
-        float(it.precoUnitario) * it.quantidade
-        for it in pedido.itens
-        if it.status != "Cancelado"
-    )
-    desconto_pedido = float(getattr(pedido, "desconto", 0.0) or 0.0)
-    total_pedido = max(0.0, round(subtotal_pedido - desconto_pedido, 2))
-
-    # Se nenhum item foi entregue/consumido e o total for zero (ou todos cancelados), não registra faturamento financeiro
-    if subtotal_pedido <= 0 and total_pedido <= 0:
-        pedido.update_stats(db, "Cancelado", commit=False)
-        pedido.dataFechamento = datetime.now()
-        pedido.idUsuarioFechamento = usuario.idUsuario
-
-        mesa = Mesa.get_by_id(db, pedido.idMesa)
-        if mesa:
-            mesa.update(db, status="Disponivel", commit=False)
-
-        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status.in_(["Aberta", "Ativa"])).all()
-        for s in sessoes_abertas:
-            s.status = "Fechada"
-
-        events_to_publish = list(cancel_events)
-        events_to_publish.append({
-            "type": "order.closed",
-            "idPedido": str(idPedido),
-            "idMesa": str(pedido.idMesa),
-            "status": "Cancelado",
-            "total": 0.0,
-            "totalPago": 0.0,
-            "formaPagamento": dados.formaPagamento,
-        })
-        events_to_publish.append({
-            "type": "table.status_changed",
-            "idMesa": str(pedido.idMesa),
-            "status": "Disponivel",
-        })
-
-        db.commit()
-        db.refresh(pedido)
-
-        for ev in events_to_publish:
-            background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, ev)
-
-        return {
-            "message": "Nenhum item foi consumido na mesa. O pedido foi cancelado e a mesa foi liberada sem gerar histórico financeiro.",
-            "pedidoEncerrado": True,
-            "pedidoCanceladoSemConsumo": True,
-            "totalPedido": 0.0,
-            "totalPago": 0.0,
-            "saldoRestante": 0.0,
-            "pagamento": None,
-            "pedido": {
-                "idPedido": str(pedido.idPedido),
-                "status": "Cancelado",
-                "idMesa": str(pedido.idMesa),
-            },
-        }
-
-    total_ja_pago = sum(float(p.valor) for p in pedido.pagamentos)
-    saldo_restante_atual = max(0.0, round(total_pedido - total_ja_pago, 2))
-
-    valor_a_pagar = dados.valor
-    if valor_a_pagar is None or valor_a_pagar <= 0:
-        valor_a_pagar = saldo_restante_atual
-    else:
-        valor_a_pagar = round(min(valor_a_pagar, saldo_restante_atual), 2)
-
-    if valor_a_pagar <= 0 and total_pedido > 0:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Não há saldo pendente para pagamento.",
-        )
-
-    # Cria pagamento
-    pagamento = Pagamento.create(
-        db,
-        idPedido=idPedido,
-        formaPagamento=dados.formaPagamento,
-        valor=valor_a_pagar,
-    )
-
-    novo_total_pago = round(total_ja_pago + valor_a_pagar, 2)
-    novo_saldo_restante = max(0.0, round(total_pedido - novo_total_pago, 2))
-
-    events_to_publish = list(cancel_events)
-    pedido_encerrado = False
-
-    if novo_saldo_restante <= 0.01:
-        pedido_encerrado = True
-        pedido.update_stats(db, "Fechado", commit=False)
-        pedido.dataFechamento = datetime.now()
-        pedido.idUsuarioFechamento = usuario.idUsuario
-
-        mesa = Mesa.get_by_id(db, pedido.idMesa)
-        if mesa:
-            mesa.update(db, status="Disponivel", commit=False)
-
-        sessoes_abertas = db.query(Sessao).filter(Sessao.idMesa == pedido.idMesa, Sessao.status == "Aberta").all()
-        for s in sessoes_abertas:
-            s.status = "Fechada"
-
-        events_to_publish.append({
-            "type": "order.closed",
-            "idPedido": str(idPedido),
-            "idMesa": str(pedido.idMesa),
-            "status": "Fechado",
-            "total": float(total_pedido),
-            "totalPago": float(novo_total_pago),
-            "formaPagamento": dados.formaPagamento,
-        })
-        events_to_publish.append({
-            "type": "table.status_changed",
-            "idMesa": str(pedido.idMesa),
-            "status": "Disponivel",
-        })
-    else:
-        events_to_publish.append({
-            "type": "order.payment_partial",
-            "idPedido": str(idPedido),
-            "idMesa": str(pedido.idMesa),
-            "valor": float(valor_a_pagar),
-            "saldoRestante": float(novo_saldo_restante),
-            "formaPagamento": dados.formaPagamento,
-        })
-
-    db.commit()
-    db.refresh(pedido)
-
-    for ev in events_to_publish:
-        background_tasks.add_task(realtime_hub.publish_event, pedido.idRestaurante, ev)
-
-    mensagem = (
-        f"Pagamento de R$ {valor_a_pagar:.2f} registrado com sucesso. Pedido encerrado e mesa liberada."
-        if pedido_encerrado
-        else f"Pagamento parcial de R$ {valor_a_pagar:.2f} ({dados.formaPagamento}) registrado. Saldo restante: R$ {novo_saldo_restante:.2f}."
-    )
-
-    return {
-        "message": mensagem,
-        "pedidoEncerrado": pedido_encerrado,
-        "subtotalPedido": float(subtotal_pedido),
-        "descontoPedido": float(desconto_pedido),
-        "totalPedido": float(total_pedido),
-        "totalComDesconto": float(total_pedido),
-        "totalPago": float(novo_total_pago),
-        "saldoRestante": float(novo_saldo_restante),
-        "pagamento": {
-            "idPagamento": str(pagamento.idPagamento),
-            "formaPagamento": pagamento.formaPagamento,
-            "valor": float(pagamento.valor),
-        },
-        "pedido": {
-            "idPedido": str(pedido.idPedido),
-            "status": pedido.status,
-            "idMesa": str(pedido.idMesa),
-        },
-    }
-
-
-@router.get("")
-def listar_pedidos(
-    idRestaurante: uuid.UUID | None = None,
-    status: str | None = None,
-    tipo: str | None = None,
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm", "Garcom")),
-) -> list[dict]:
-    """Lista pedidos do restaurante com filtros de status ou tipo (ativos/historico)."""
-    rest_id = usuario.idRestaurante if usuario.funcao != "Adm" else (idRestaurante or usuario.idRestaurante)
-
-    query = db.query(Pedido).join(Mesa, Pedido.idMesa == Mesa.idMesa).outerjoin(Usuario, Pedido.idGarcom == Usuario.idUsuario)
-    if rest_id:
-        query = query.filter(Pedido.idRestaurante == rest_id)
-    if status:
-        query = query.filter(Pedido.status == status)
-    elif tipo == "ativos":
-        query = query.filter(Pedido.status.notin_(["Fechado", "Cancelado"]))
-    elif tipo == "historico":
-        query = query.filter(Pedido.status.in_(["Fechado", "Cancelado"]))
-
-    pedidos = query.order_by(Pedido.dataAbertura.desc()).all()
-    resultado = []
-
-    for pedido in pedidos:
-        itens_res = []
-        total_itens = 0.0
-        for it in pedido.itens:
-            subtotal = float(it.precoUnitario) * it.quantidade
-            if it.status != "Cancelado":
-                total_itens += subtotal
-            nome_item = it.cardapio.nome if it.cardapio else "Item do cardápio"
-            itens_res.append({
-                "idItemPedido": str(it.idItemPedido),
-                "idCardapio": str(it.idCardapio),
-                "nome": nome_item,
-                "quantidade": it.quantidade,
-                "precoUnitario": float(it.precoUnitario),
-                "subtotal": round(subtotal, 2),
-                "observacao": it.observacao,
-                "status": it.status,
-                "categoria": it.categoria,
-            })
-
-        pagamentos_res = []
-        for p in pedido.pagamentos:
-            pagamentos_res.append({
-                "idPagamento": str(p.idPagamento),
-                "formaPagamento": p.formaPagamento,
-                "valor": float(p.valor),
-                "dataPagamento": p.dataPagamento.isoformat() if p.dataPagamento else None,
-            })
-
-        nome_fechamento = pedido.usuario_fechamento.nome if pedido.usuario_fechamento else None
-        funcao_fechamento = pedido.usuario_fechamento.funcao if pedido.usuario_fechamento else None
-        resultado.append({
-            "idPedido": str(pedido.idPedido),
-            "idRestaurante": str(pedido.idRestaurante),
-            "idMesa": str(pedido.idMesa),
-            "numeroMesa": pedido.mesa.numero if pedido.mesa else None,
-            "idGarcom": str(pedido.idGarcom) if pedido.idGarcom else None,
-            "nomeGarcom": pedido.garcom.nome if pedido.garcom else None,
-            "status": pedido.status,
-            "dataAbertura": pedido.dataAbertura.isoformat() if pedido.dataAbertura else None,
-            "dataFechamento": pedido.dataFechamento.isoformat() if pedido.dataFechamento else None,
-            "idUsuarioFechamento": str(pedido.idUsuarioFechamento) if pedido.idUsuarioFechamento else None,
-            "nomeUsuarioFechamento": nome_fechamento,
-            "funcaoUsuarioFechamento": funcao_fechamento,
-            "subtotal": round(total_itens, 2),
-            "desconto": round(float(getattr(pedido, "desconto", 0.0) or 0.0), 2),
-            "total": round(max(0.0, total_itens - float(getattr(pedido, "desconto", 0.0) or 0.0)), 2),
-            "totalComDesconto": round(max(0.0, total_itens - float(getattr(pedido, "desconto", 0.0) or 0.0)), 2),
-            "itens": itens_res,
-            "pagamentos": pagamentos_res,
-        })
-
-    return resultado
-
-
-@router.get("/kds/fila")
-def obter_fila(
-    db: Session = Depends(get_db),
-    usuario: Usuario = Depends(exigir_funcao("Cozinheiro", "Garcom", "Gerente", "Adm")),
-) -> dict:
-    return PedidoService(db).queue_snapshot(usuario)
-
-
-@router.websocket("/kds/ws")
-@router.websocket("/ws")
-async def pedidos_websocket(
-    websocket: WebSocket,
-    db: Session = Depends(get_db),
-) -> None:
-    await websocket.accept()
-
-    try:
-        auth_message = await asyncio.wait_for(
-            websocket.receive_json(),
-            timeout=5,
-        )
-
-        token = (
-            auth_message.get("token")
-            if isinstance(auth_message, dict)
-            and auth_message.get("type") == "authenticate"
-            else None
-        )
-
-        if not isinstance(token, str) or not token:
-            await websocket.close(code=4401)
-            return
-
-        try:
-            usuario = get_user_from_token(token, db)
-        except HTTPException:
-            await websocket.close(code=4401)
-            return
-
-        if usuario.funcao not in ("Cozinheiro", "Garcom"):
-            await websocket.close(code=4403)
-            return
-
-        service = PedidoService(db)
-
-        await realtime_hub.connect_and_sync(
-            websocket=websocket,
-            restaurant_id=usuario.idRestaurante,
-            user_id=usuario.idUsuario,
-            role=usuario.funcao,
-            snapshot_factory=lambda: service.queue_snapshot(usuario),
-        )
-
-        while True:
-            try:
-                await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=15,
-                )
-            except TimeoutError:
-                conectado = await realtime_hub.refresh_queue(
-                    websocket=websocket,
-                    snapshot_factory=lambda: service.queue_snapshot(usuario),
-                )
-
-                if not conectado:
-                    break
-
-    except (TimeoutError, ValueError):
-        await websocket.close(code=4401)
-
-    except WebSocketDisconnect:
-        pass
-
-    except (OSError, RuntimeError, SQLAlchemyError):
-        await websocket.close(code=1011)
-
-    finally:
-        await realtime_hub.disconnect(websocket)
-
-
-def _extract_handshake_credentials(websocket: WebSocket) -> tuple[str | None, str | None]:
-    """Extrai token JWT e shiftStatus dos headers ou query params do handshake WebSocket."""
-    auth_header = websocket.headers.get("authorization", "")
-    token: str | None = None
-    if auth_header.lower().startswith("bearer "):
-        token = auth_header[7:].strip()
-    elif websocket.query_params.get("token"):
-        token = websocket.query_params.get("token")
-
-    shift_override = (
-        websocket.headers.get("x-shift-status")
-        or websocket.query_params.get("shiftStatus")
-        or websocket.query_params.get("shift")
-    )
-    return token, shift_override
-
-
-@router.websocket("/ws/waiters")
-@router.websocket("/ws/garcons")
-async def waiters_room_websocket(
-    websocket: WebSocket,
-    db: Session = Depends(get_db),
-) -> None:
-    await handle_waiter_room_websocket(websocket, db)
-
-
-async def handle_waiter_room_websocket(
-    websocket: WebSocket,
-    db: Session,
-) -> None:
-    """
-    Gateway WebSocket dedicado para a sala de garçons em serviço (`room:waiters:active`).
-    Suporta autenticação no handshake (Header Authorization / Query ?token=) ou no 1º frame JSON,
-    valida role WAITER/Garcom e status ON_SHIFT, e executa heartbeat Ping-Pong.
-    """
-    await websocket.accept()
-
-    try:
-        token, shift_override = _extract_handshake_credentials(websocket)
-
-        if not token:
-            auth_message = await asyncio.wait_for(
-                websocket.receive_json(),
-                timeout=5.0,
-            )
-            if isinstance(auth_message, dict) and auth_message.get("type") == "authenticate":
-                token = auth_message.get("token")
-                if not shift_override:
-                    shift_override = (
-                        auth_message.get("shiftStatus")
-                        or auth_message.get("shift_status")
-                    )
-
-        if not isinstance(token, str) or not token.strip():
-            await websocket.close(code=4401)
-            return
-
-        try:
-            claims = decodificar_token(token)
-            usuario = get_user_from_token(token, db)
-        except HTTPException:
-            await websocket.close(code=4401)
-            return
-
-        effective_role = claims.get("funcao") or usuario.funcao
-        effective_shift = (
-            shift_override
-            or claims.get("shift_status")
-            or ("ON_SHIFT" if usuario.status else "OFF_SHIFT")
-        ).strip().upper()
-
-        if effective_role not in ("Garcom", "WAITER") or effective_shift != "ON_SHIFT":
-            await websocket.close(code=4403)
-            return
-
-        await realtime_hub.join_waiters_room(
-            websocket=websocket,
-            restaurant_id=usuario.idRestaurante,
-            user_id=usuario.idUsuario,
-            role=effective_role,
-            shift_status=effective_shift,
-        )
-
-        while True:
-            try:
-                raw_msg = await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=25.0,
-                )
-                await realtime_hub.record_heartbeat(websocket)
-
-                if raw_msg.strip().lower() == "ping":
-                    await websocket.send_text("pong")
-                    continue
-
-                try:
-                    parsed = json.loads(raw_msg)
-                except ValueError:
-                    continue
-
-                if not isinstance(parsed, dict):
-                    continue
-
-                msg_type = parsed.get("type")
-                if msg_type == "ping":
-                    await websocket.send_json(
-                        {
-                            "type": "pong",
-                            "timestamp": datetime.now(UTC).isoformat(),
-                        }
-                    )
-                elif msg_type in ("shift:update", "shift:end"):
-                    new_shift = (
-                        "OFF_SHIFT"
-                        if msg_type == "shift:end"
-                        else str(parsed.get("shiftStatus", "OFF_SHIFT")).upper()
-                    )
-                    still_active = await realtime_hub.update_waiter_shift(
-                        websocket, new_shift
-                    )
-                    if not still_active:
-                        await websocket.send_json(
-                            {
-                                "type": "room.left",
-                                "room": "room:waiters:active",
-                                "reason": "shift_ended",
-                                "timestamp": datetime.now(UTC).isoformat(),
-                            }
-                        )
-                        await websocket.close(code=4403)
-                        return
-
-            except TimeoutError:
-                try:
-                    await asyncio.wait_for(
-                        websocket.send_json(
-                            {
-                                "type": "ping",
-                                "timestamp": datetime.now(UTC).isoformat(),
-                            }
-                        ),
-                        timeout=realtime_hub.send_timeout,
-                    )
-                except Exception:  # noqa: BLE001
-                    break
-
-    except (TimeoutError, ValueError):
-        await websocket.close(code=4401)
-
-    except PermissionError:
-        await websocket.close(code=4403)
-
-    except WebSocketDisconnect:
-        pass
-
-    except (OSError, RuntimeError, SQLAlchemyError):
-        await websocket.close(code=1011)
-
-    finally:
-        await realtime_hub.leave_waiters_room(websocket, reason="connection_closed")
-import asyncio
-import json
-import uuid
-from datetime import UTC, datetime
-
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -818,6 +31,8 @@ from src.models.Usuario import Usuario
 from src.schemas.PedidoSchema import (
     AdicionarItensMesaRequest,
     ConfirmacaoCancelamentoCliente,
+    DescontoApplyRequest,
+    DescontoRemoverRequest,
     ItemPedidoQuantidadeUpdate,
     ItemPedidoStatusUpdate,
     PedidoCreate,
@@ -917,7 +132,7 @@ def remover_item_pedido(
 ) -> dict:
     service = PedidoService(db)
     result = service.remover_item_comanda(
-        idPedido, idItemPedido, usuario, dados.motivo
+        idPedido, idItemPedido, usuario, dados.motivo_efetivo or ""
     )
     background_tasks.add_task(service.publish_events, result.pop("events"))
     return result
@@ -934,6 +149,61 @@ def assumir_entrega(
     result = service.assumir_entrega(idPedido, usuario)
     background_tasks.add_task(service.publish_events, result.pop("events"))
     return result
+
+
+@router.post("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
+@router.patch("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
+def aplicar_desconto_pedido(
+    idPedido: uuid.UUID,
+    dados: DescontoApplyRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    """Aplica desconto na comanda condicionado à autenticação de senha do gerente (RF13)."""
+    service = PedidoService(db)
+    result = service.aplicar_desconto(idPedido, dados, usuario)
+    if "event" in result:
+        event = result.pop("event")
+        background_tasks.add_task(realtime_hub.publish_event, usuario.idRestaurante, event)
+    return result
+
+
+@router.delete("/{idPedido}/desconto", status_code=http_status.HTTP_200_OK)
+def remover_desconto_pedido(
+    idPedido: uuid.UUID,
+    dados: DescontoRemoverRequest | None = None,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> dict:
+    """Remove desconto concedido à comanda."""
+    service = PedidoService(db)
+    return service.remover_desconto(idPedido, dados, usuario)
+
+
+@router.get("/{idPedido}/desconto/logs")
+@router.get("/{idPedido}/logs-desconto")
+def obter_logs_desconto_pedido(
+    idPedido: uuid.UUID,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
+) -> list[dict]:
+    """Lista histórico e logs de tentativas e concessões de desconto no pedido."""
+    service = PedidoService(db)
+    return service.listar_logs_desconto(idPedido=idPedido, idRestaurante=usuario.idRestaurante)
+
+
+@router.get("/logs-desconto/restaurante")
+@router.get("/logs-desconto")
+def obter_logs_desconto_restaurante(
+    idRestaurante: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(exigir_funcao("Gerente", "Adm")),
+) -> list[dict]:
+    """Lista histórico e logs de tentativas e concessões de desconto no restaurante."""
+    service = PedidoService(db)
+    rest_id = usuario.idRestaurante if usuario.funcao != "Adm" else (idRestaurante or usuario.idRestaurante)
+    return service.listar_logs_desconto(idRestaurante=rest_id)
 
 
 @router.get("/{idPedido}")
@@ -1076,7 +346,7 @@ def cancelar_item(
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
     service = PedidoService(db)
-    motivo = dados.motivo if dados else None
+    motivo = dados.motivo_efetivo if dados else None
     result = service.cancelar_item(idItemPedido, usuario, motivo)
     events = result.pop("events", None) or [result.pop("event", None)]
     background_tasks.add_task(service.publish_events, [e for e in events if e])
@@ -1097,7 +367,6 @@ def registrar_pagamento(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(exigir_funcao("Garcom", "Gerente", "Adm")),
 ) -> dict:
-    service = PedidoService(db)
     pedido = Pedido.get_by_id(db, idPedido)
     if not pedido or pedido.idRestaurante != usuario.idRestaurante:
         raise HTTPException(
@@ -1110,7 +379,6 @@ def registrar_pagamento(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="Este pedido já foi encerrado.",
         )
-
 
     itens_pendentes = [it for it in pedido.itens if it.status == "Pendente"]
     if itens_pendentes:
@@ -1132,15 +400,17 @@ def registrar_pagamento(
 
     cancel_events = []
 
-    # Calcula valor total considerando itens não cancelados
-    total_pedido = sum(
+    # Calcula valor total considerando itens não cancelados e desconto concedido
+    subtotal_pedido = sum(
         float(it.precoUnitario) * it.quantidade
         for it in pedido.itens
         if it.status != "Cancelado"
     )
+    desconto_pedido = float(getattr(pedido, "desconto", 0.0) or 0.0)
+    total_pedido = max(0.0, round(subtotal_pedido - desconto_pedido, 2))
 
     # Se nenhum item foi entregue/consumido e o total for zero (ou todos cancelados), não registra faturamento financeiro
-    if total_pedido <= 0:
+    if subtotal_pedido <= 0 and total_pedido <= 0:
         pedido.update_stats(db, "Cancelado", commit=False)
         pedido.dataFechamento = datetime.now()
         pedido.idUsuarioFechamento = usuario.idUsuario
@@ -1293,7 +563,10 @@ def registrar_pagamento(
     return {
         "message": mensagem,
         "pedidoEncerrado": pedido_encerrado,
+        "subtotalPedido": float(subtotal_pedido),
+        "descontoPedido": float(desconto_pedido),
         "totalPedido": float(total_pedido),
+        "totalComDesconto": float(total_pedido),
         "totalPago": float(novo_total_pago),
         "saldoRestante": float(novo_saldo_restante),
         "pagamento": {
@@ -1346,11 +619,11 @@ def listar_pedidos(
 
     for pedido in pedidos:
         itens_res = []
-        total = 0.0
+        total_itens = 0.0
         for it in pedido.itens:
             subtotal = float(it.precoUnitario) * it.quantidade
             if it.status != "Cancelado":
-                total += subtotal
+                total_itens += subtotal
             nome_item = it.cardapio.nome if it.cardapio else "Item do cardápio"
             itens_res.append({
                 "idItemPedido": str(it.idItemPedido),
@@ -1373,7 +646,10 @@ def listar_pedidos(
                 "dataPagamento": p.dataPagamento.isoformat() if p.dataPagamento else None,
             })
 
-        if tipo == "historico" and total <= 0 and not pagamentos_res:
+        desconto_val = float(getattr(pedido, "desconto", 0.0) or 0.0)
+        total_liquido = max(0.0, round(total_itens - desconto_val, 2))
+
+        if tipo == "historico" and total_itens <= 0 and not pagamentos_res:
             continue
 
         nome_fechamento = pedido.usuario_fechamento.nome if pedido.usuario_fechamento else None
@@ -1391,7 +667,10 @@ def listar_pedidos(
             "idUsuarioFechamento": str(pedido.idUsuarioFechamento) if pedido.idUsuarioFechamento else None,
             "nomeUsuarioFechamento": nome_fechamento,
             "funcaoUsuarioFechamento": funcao_fechamento,
-            "total": round(total, 2),
+            "subtotal": round(total_itens, 2),
+            "desconto": round(desconto_val, 2),
+            "total": total_liquido,
+            "totalComDesconto": total_liquido,
             "itens": itens_res,
             "pagamentos": pagamentos_res,
         })

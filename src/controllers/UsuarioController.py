@@ -148,6 +148,7 @@ def atualizar_usuario(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Gerente só pode atribuir cargos inferiores: Garçom ou Cozinheiro.",
             )
+        dados.idRestaurante = usuario_logado.idRestaurante
 
     return service.update(idUsuario, dados)
 

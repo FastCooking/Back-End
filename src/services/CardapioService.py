@@ -154,7 +154,32 @@ class CardapioService:
             tempoPreparo=dados.tempoPreparo if dados.tempoPreparo is not None else None,
             pathImage=dados.pathImage,
             descricao=dados.descricao,
+            status=dados.status,
         )
+
+    def alterar_status(
+        self,
+        idCardapio: uuid.UUID | str,
+        novo_status: bool,
+        usuario: Usuario | None = None,
+    ) -> Cardapio:
+        item = self.buscar_por_id(idCardapio)
+
+        if (
+            usuario
+            and usuario.funcao == "Gerente"
+            and item.idRestaurante != usuario.idRestaurante
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item do cardápio não encontrado.",
+            )
+
+        if novo_status:
+            item.able(self.db)
+        else:
+            item.disable(self.db)
+        return item
 
     def excluir(
         self,

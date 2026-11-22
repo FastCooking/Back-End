@@ -104,6 +104,7 @@ class UsuarioCreate(UsuarioBase):
 
 
 class UsuarioUpdate(BaseModel):
+    idRestaurante: uuid.UUID | None = Field(default=None, description="ID do Restaurante vinculado")
     nome: str | None = Field(default=None, min_length=2, max_length=255, description="Nome completo")
     cpf: str | None = Field(default=None, description="CPF válido")
     email: EmailStr | None = Field(default=None, description="E-mail único")

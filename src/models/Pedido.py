@@ -2,8 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, func, text
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -131,7 +130,6 @@ class Pedido(Base):
     @classmethod
     def get_by_id(cls, db: Session, idPedido: uuid.UUID | str) -> Optional["Pedido"]:
         """Busca pedido pelo ID."""
-    def get_by_id(cls, db: Session, idPedido: uuid.UUID | str) -> Optional["Pedido"]:
         return db.query(cls).filter(cls.idPedido == idPedido).first()
 
     @classmethod
