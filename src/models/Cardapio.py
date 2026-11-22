@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, Integer, ForeignKey, Numeric, String, Text, text
+from sqlalchemy import Boolean, Column, Index, Integer, ForeignKey, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -10,6 +10,9 @@ from src.database.connection import Base
 
 class Cardapio(Base):
     __tablename__ = "Cardapio"
+    __table_args__ = (
+        Index("ix_cardapio_rest_status_cat", "idRestaurante", "status", "categoria"),
+    )
 
     idCardapio: uuid.UUID = Column(
         UUID(as_uuid=True),

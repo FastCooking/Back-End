@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PedidoItemCreate(BaseModel):
@@ -15,6 +16,24 @@ class PedidoCreate(BaseModel):
     idMesa: uuid.UUID
     sessao_id: str | None = None
     itens: list[PedidoItemCreate] = Field(min_length=1)
+
+
+class AdicionarItensMesaRequest(BaseModel):
+    sessao_id: str | None = None
+    itens: list[PedidoItemCreate] = Field(min_length=1)
+
+
+class RemoverItemRequest(BaseModel):
+    motivo: str = Field(..., min_length=1)
+
+    @field_validator("motivo")
+    @classmethod
+    def validar_motivo(cls, motivo: str) -> str:
+        return motivo.strip()
+
+
+class ConfirmacaoCancelamentoCliente(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class ItemPedidoStatusUpdate(BaseModel):
@@ -44,6 +63,7 @@ class ItemResponseSchema(BaseModel):
     observacao: str | None
     categoria: str | None = None
     prioridade: int = 1
+    origem: str = "CLIENTE"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -117,3 +137,9 @@ class LogDescontoResponseSchema(BaseModel):
     dataHora: datetime
 
     model_config = ConfigDict(from_attributes=True)
+    motivo: str | None = None
+
+    @field_validator("motivo")
+    @classmethod
+    def validar_motivo(cls, motivo: str | None) -> str | None:
+        return motivo.strip() if motivo is not None else None

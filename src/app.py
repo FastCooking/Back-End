@@ -1,13 +1,16 @@
+import asyncio
 import os
 import sys
+import time
 from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Request, WebSocket, status
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 # Adiciona o diretório raiz do projeto ao sys.path para garantir importações com 'src.'
@@ -29,7 +32,8 @@ from src.controllers.MesaController import router as mesa_router
 from src.controllers.PedidoController import router as pedido_router
 from src.controllers.RestauranteController import router as restaurante_router
 from src.controllers.UsuarioController import router as usuario_router
-from src.core.bootstrap import garantir_usuario_admin, executar_migracoes_seguras
+from src.core.audit_logger import limpar_logs_antigos, rotina_diaria_limpeza_logs
+from src.core.bootstrap import executar_migracoes_seguras, garantir_usuario_admin
 from src.database.connection import get_db, test_connection
 from src.services.DeliveryService import DeliveryDomainError
 
@@ -45,7 +49,26 @@ async def lifespan(app: FastAPI):
         garantir_usuario_admin()
     except Exception as exc:  # noqa: BLE001
         print(f"[BOOTSTRAP] Aviso/Erro ao verificar usuário padrão: {exc}")
-    yield
+
+    # Limpeza preventiva de logs de auditoria com mais de 90 dias
+    try:
+        limpar_logs_antigos(dias=90)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[AUDITORIA] Aviso na limpeza inicial de logs: {exc}")
+
+    # Tarefa em background para rotina diária de limpeza
+    task_limpeza = asyncio.create_task(
+        rotina_diaria_limpeza_logs(intervalo_horas=24, dias_retencao=90)
+    )
+
+    try:
+        yield
+    finally:
+        task_limpeza.cancel()
+        try:
+            await task_limpeza
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -55,13 +78,49 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    origin = request.headers.get("origin")
+    if origin:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    return {"Access-Control-Allow-Origin": "*"}
+
+
+# GZip adicionado primeiro; CORSMiddleware adicionado depois para ser o mais externo (outermost)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://fastcooking-front-dev.vercel.app",
+        "https://fastcooking-front-end.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ],
+    allow_origin_regex=r"^https://.*\.vercel\.app$|^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests_middleware(request: Request, call_next):
+    inicio = time.perf_counter()
+    response = await call_next(request)
+    duracao_ms = (time.perf_counter() - inicio) * 1000
+    ip_cliente = request.client.host if request.client else "desconhecido"
+    print(
+        f"[HTTP] {request.method} {request.url.path} - "
+        f"Status: {response.status_code} ({duracao_ms:.1f}ms) - IP: {ip_cliente}"
+    )
+    return response
 
 
 @app.exception_handler(DeliveryDomainError)
@@ -75,6 +134,7 @@ async def delivery_domain_exception_handler(request: Request, exc: DeliveryDomai
             "message": exc.message,
             "detail": f"{exc.code}: {exc.message}",
         },
+        headers=_cors_headers(request),
     )
 
 
@@ -93,6 +153,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "message": "Erro de validação: campos obrigatórios ausentes ou inválidos.",
             "detail": jsonable_encoder(exc.errors()),
         },
+        headers=_cors_headers(request),
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Garante headers CORS para exceções HTTP comuns (400, 401, 403, 404)."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=_cors_headers(request),
     )
 
 
@@ -102,6 +173,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": f"Erro interno do servidor: {str(exc)}"},
+        headers=_cors_headers(request),
     )
 
 
@@ -161,7 +233,7 @@ def getVarsEnv():
     varsEnv = {
         "DATABASE_URL": os.getenv("DATABASE_URL"),
         "BCRYPT_ROUNDS": os.getenv("BCRYPT_ROUNDS"),
-        "SERVER_PORT": os.getenv("SERVER_PORT"),
+        "SERVER_PORT": os.getenv("BACKEND_PORT") or os.getenv("SERVER_PORT"),
         "JWT_SECRET": os.getenv("JWT_SECRET"),
     }
 

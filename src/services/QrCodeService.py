@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from src.models.Mesa import Mesa
 
 
+_QRCODE_CACHE: dict[str, bytes] = {}
+
+
 class QrCodeService:
     def __init__(self, db: Session):
         self.db = db
@@ -30,11 +33,17 @@ class QrCodeService:
             )
         ).rstrip("/")
 
+        cache_key = f"{mesa.idMesa}:{base_url}:{mesa.numero}"
+        if cache_key in _QRCODE_CACHE:
+            return BytesIO(_QRCODE_CACHE[cache_key])
+
         url = f"{base_url}/cardapio?idMesa={mesa.idMesa}&idRestaurante={mesa.idRestaurante}&mesa={mesa.numero}"
 
         imagem = qrcode.make(url)
         arquivo = BytesIO()
         imagem.save(arquivo, format="PNG")
+        data = arquivo.getvalue()
+        _QRCODE_CACHE[cache_key] = data
         arquivo.seek(0)
 
         return arquivo

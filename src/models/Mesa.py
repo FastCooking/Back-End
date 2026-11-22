@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint, text
+from sqlalchemy import Column, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -27,6 +27,7 @@ class Mesa(Base):
 
     __table_args__ = (
         UniqueConstraint("idRestaurante", "numero", name="uq_restaurante_mesa"),
+        Index("ix_mesa_restaurante_status", "idRestaurante", "status"),
     )
 
     # Relacionamentos

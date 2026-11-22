@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from src.database.connection import get_db
 from src.models.Restaurante import Restaurante
@@ -84,7 +84,12 @@ def validar_refresh_token(refresh_token: str, db: Session) -> Usuario:
     except (JWTError, TypeError, ValueError):
         raise excecao
 
-    usuario = Usuario.get_by_id(db, id_uuid)
+    usuario = (
+        db.query(Usuario)
+        .options(joinedload(Usuario.restaurante))
+        .filter(Usuario.idUsuario == id_uuid)
+        .first()
+    )
     if (
         usuario is None
         or not usuario.status

@@ -1,5 +1,7 @@
 import pytest
+
 from src.core.security import criar_token
+from src.models.AuditoriaCancelamentoItem import AuditoriaCancelamentoItem
 from src.models.Cardapio import Cardapio
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
@@ -139,11 +141,31 @@ def test_alterar_quantidade_item_pendente(client, cenario_novas_regras):
     # 2. Altera quantidade para 0 -> cancela item
     resp_zero = client.patch(
         f"/pedidos/itens/{item_id}/quantidade",
-        json={"quantidade": 0},
+        json={"quantidade": 0, "motivo": "Cliente desistiu"},
         headers=headers,
     )
     assert resp_zero.status_code == 200
     assert resp_zero.json()["item"]["status"] == "Cancelado"
+    assert resp_zero.json()["origemCancelamento"] == "GARCOM"
+    assert resp_zero.json()["statusAnterior"] == "Pendente"
+
+
+def test_quantidade_zero_sem_justificativa_nao_cancela_item(
+    client, cenario_novas_regras, db_session
+):
+    headers = cenario_novas_regras["headers_garcom"]
+    item = cenario_novas_regras["item_ped1"]
+
+    response = client.patch(
+        f"/pedidos/itens/{item.idItemPedido}/quantidade",
+        json={"quantidade": 0},
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    db_session.refresh(item)
+    assert item.status == "Pendente"
+    assert db_session.query(AuditoriaCancelamentoItem).count() == 0
 
 
 def test_bloqueio_alterar_quantidade_em_preparo(client, cenario_novas_regras):
@@ -181,6 +203,14 @@ def test_bloqueio_pagamento_com_itens_em_preparo(client, cenario_novas_regras):
         headers=headers_cozinha,
     )
 
+    item_pendente_id = str(cenario_novas_regras["item_ped2"].idItemPedido)
+    cancelamento = client.patch(
+        f"/pedidos/itens/{item_pendente_id}/cancelar",
+        json={"motivo": "Cancelamento prévio para finalizar teste de pagamento"},
+        headers=headers_garcom,
+    )
+    assert cancelamento.status_code == 200
+
     # Garçom tenta pagar e fechar mesa -> 409
     resp = client.post(
         f"/pedidos/{pedido_id}/pagamento",
@@ -197,6 +227,7 @@ def test_pagamentos_multiplos_e_fechamento(client, cenario_novas_regras):
     headers_cozinha = cenario_novas_regras["headers_cozinha"]
     pedido_id = str(cenario_novas_regras["pedido"].idPedido)
     item1_id = str(cenario_novas_regras["item_ped1"].idItemPedido)
+    item2_id = str(cenario_novas_regras["item_ped2"].idItemPedido)
 
     # Cozinha avança item1 para Pronto
     client.patch(f"/pedidos/itens/{item1_id}/status", json={"status": "Em preparo"}, headers=headers_cozinha)
@@ -205,7 +236,15 @@ def test_pagamentos_multiplos_e_fechamento(client, cenario_novas_regras):
     client.post(f"/pedidos/itens/{item1_id}/claim", headers=headers_garcom)
     client.post(f"/pedidos/entregas/{item1_id}/complete", headers=headers_garcom)
 
-    # Total atual: item1 (2 x 30 = 60) + item2 pendente (1 x 10 = 10) = 70
+    # Pendências precisam ser canceladas explicitamente antes de qualquer pagamento.
+    cancelamento = client.patch(
+        f"/pedidos/itens/{item2_id}/cancelar",
+        json={"motivo": "Cliente desistiu do suco"},
+        headers=headers_garcom,
+    )
+    assert cancelamento.status_code == 200
+
+    # Total atual: item1 (2 x 30 = 60); item2 foi cancelado pela operação RF11.
     # 1º pagamento parcial: R$ 30 via PIX
     resp1 = client.post(
         f"/pedidos/{pedido_id}/pagamento",
@@ -215,7 +254,6 @@ def test_pagamentos_multiplos_e_fechamento(client, cenario_novas_regras):
     assert resp1.status_code == 201
     assert resp1.json()["pedidoEncerrado"] is False
     assert resp1.json()["totalPago"] == 30.0
-    # Notice: item2 was pendente, so it was cancelled on payment attempt, total becomes 60!
     # Saldo restante = 60 - 30 = 30
     assert resp1.json()["totalPedido"] == 60.0
     assert resp1.json()["saldoRestante"] == 30.0

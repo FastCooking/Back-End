@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, func, text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -11,6 +12,18 @@ from src.database.connection import Base
 
 class Pedido(Base):
     __tablename__ = "Pedido"
+    __table_args__ = (
+        Index("ix_pedido_restaurante_status", "idRestaurante", "status"),
+        Index("ix_pedido_mesa_status", "idMesa", "status"),
+        Index("ix_pedido_data_abertura", "dataAbertura"),
+        Index(
+            "uq_pedido_ativo_por_mesa",
+            "idMesa",
+            unique=True,
+            postgresql_where=text("status NOT IN ('Fechado', 'Cancelado')"),
+            sqlite_where=text('"status" NOT IN (\'Fechado\', \'Cancelado\')'),
+        ),
+    )
 
     idPedido: uuid.UUID = Column(
         UUID(as_uuid=True),
@@ -118,6 +131,7 @@ class Pedido(Base):
     @classmethod
     def get_by_id(cls, db: Session, idPedido: uuid.UUID | str) -> Optional["Pedido"]:
         """Busca pedido pelo ID."""
+    def get_by_id(cls, db: Session, idPedido: uuid.UUID | str) -> Optional["Pedido"]:
         return db.query(cls).filter(cls.idPedido == idPedido).first()
 
     @classmethod
@@ -201,3 +215,59 @@ class Pedido(Base):
         db.commit()
         db.refresh(self)
         return self
+    def get_all_by_restaurante(
+        cls,
+        db: Session,
+        idRestaurante: uuid.UUID | str,
+        status: str | None = None,
+        apenas_ativos: bool = False,
+    ) -> list["Pedido"]:
+        query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
+        if status:
+            query = query.filter(cls.status == status)
+        elif apenas_ativos:
+            query = query.filter(cls.status.notin_(["Fechado", "Cancelado"]))
+        return query.order_by(cls.dataAbertura.desc()).all()
+
+    @classmethod
+    def create(
+        cls,
+        db: Session,
+        idRestaurante: uuid.UUID | str,
+        idMesa: uuid.UUID | str,
+        idGarcom: uuid.UUID | str | None = None,
+        sessao_id: str | None = None,
+        status: str = "Aberto",
+        commit: bool = True,
+    ) -> "Pedido":
+        pedido = cls(
+            idPedido=uuid.uuid4(),
+            idRestaurante=idRestaurante,
+            idMesa=idMesa,
+            idGarcom=idGarcom,
+            sessao_id=sessao_id,
+            status=status,
+            dataAbertura=datetime.now(),
+        )
+        db.add(pedido)
+        if commit:
+            db.commit()
+            db.refresh(pedido)
+        else:
+            db.flush()
+        return pedido
+
+    def update_stats(self, db: Session, status: str, commit: bool = True) -> "Pedido":
+        self.status = status
+        if status in ("Fechado", "Cancelado") and not self.dataFechamento:
+            self.dataFechamento = datetime.now()
+        if commit:
+            db.commit()
+            db.refresh(self)
+        return self
+
+    def close(self, db: Session, commit: bool = True) -> "Pedido":
+        return self.update_stats(db, "Fechado", commit=commit)
+
+    def cancel(self, db: Session, commit: bool = True) -> "Pedido":
+        return self.update_stats(db, "Cancelado", commit=commit)

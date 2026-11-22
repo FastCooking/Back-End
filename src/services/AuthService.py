@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from src.core.audit_logger import log_login
 from src.core.security import criar_refresh_token, criar_token, validar_refresh_token
 from src.models.Usuario import Usuario
 from src.schemas.AuthSchema import LoginRequest, RefreshTokenRequest, TokenResponse
@@ -36,6 +37,11 @@ class AuthService:
                 usuario = Usuario.get_by_email(self.db, "roberto.cozinha@kfc.com.br")
 
         if not usuario:
+            log_login(
+                sucesso=False,
+                identificador_usuario=termo,
+                detalhe_erro="Usuário não encontrado ou e-mail inexistente",
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="E-mail ou senha inválidos.",
@@ -45,6 +51,13 @@ class AuthService:
 
         # Verifica se está bloqueado
         if usuario.bloqueadoAte and usuario.bloqueadoAte > agora:
+            log_login(
+                sucesso=False,
+                identificador_usuario=usuario.email,
+                id_usuario=usuario.idUsuario,
+                funcao=usuario.funcao,
+                detalhe_erro="Conta bloqueada temporariamente",
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Conta bloqueada. Tente novamente após {usuario.bloqueadoAte.strftime('%H:%M:%S')}.",
@@ -63,18 +76,39 @@ class AuthService:
                 self._notificar_gerente(usuario)
 
             self.db.commit()
+            log_login(
+                sucesso=False,
+                identificador_usuario=usuario.email,
+                id_usuario=usuario.idUsuario,
+                funcao=usuario.funcao,
+                detalhe_erro="Senha incorreta",
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="E-mail ou senha inválidos.",
             )
 
         if not usuario.status:
+            log_login(
+                sucesso=False,
+                identificador_usuario=usuario.email,
+                id_usuario=usuario.idUsuario,
+                funcao=usuario.funcao,
+                detalhe_erro="Usuário inativo",
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Usuário inativo.",
             )
 
         if usuario.restaurante and not usuario.restaurante.status:
+            log_login(
+                sucesso=False,
+                identificador_usuario=usuario.email,
+                id_usuario=usuario.idUsuario,
+                funcao=usuario.funcao,
+                detalhe_erro="Restaurante inativo",
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Restaurante inativo ou desativado.",
@@ -84,6 +118,13 @@ class AuthService:
         usuario.tentativasFalhas = 0
         usuario.bloqueadoAte = None
         self.db.commit()
+
+        log_login(
+            sucesso=True,
+            identificador_usuario=usuario.email,
+            id_usuario=usuario.idUsuario,
+            funcao=usuario.funcao,
+        )
 
         token = criar_token(usuario.idUsuario, usuario.funcao, usuario.idRestaurante)
         refresh_token = criar_refresh_token(usuario.idUsuario)

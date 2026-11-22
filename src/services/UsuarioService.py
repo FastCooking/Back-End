@@ -1,3 +1,4 @@
+import os
 import uuid
 
 import bcrypt
@@ -11,7 +12,8 @@ from src.schemas.UsuarioSchema import UsuarioCreate, UsuarioUpdate
 
 def hash_senha(senha: str) -> str:
     """Gera hash seguro bcrypt para a senha."""
-    salt = bcrypt.gensalt()
+    rounds = int(os.getenv("BCRYPT_ROUNDS", "12"))
+    salt = bcrypt.gensalt(rounds=rounds)
     return bcrypt.hashpw(senha.encode("utf-8"), salt).decode("utf-8")
 
 
