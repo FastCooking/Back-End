@@ -855,15 +855,15 @@ class PedidoService:
         if not senha:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A senha do gerente é obrigatória para autorizar o desconto.",
+                detail="A senha do garçom ou senha do gerente é obrigatória para autorizar o desconto.",
             )
 
-        # Perfis autorizados a autenticar desconto por senha (configurável entre Gerente/Adm ou Garcom)
+        # Perfis autorizados a autenticar desconto por senha (Garçom, Gerente e Adm)
         perfis_autorizados = tuple(
             p.strip()
-            for p in os.getenv("PERFIS_AUTORIZADOS_DESCONTO", "Gerente,Adm").split(",")
+            for p in os.getenv("PERFIS_AUTORIZADOS_DESCONTO", "Garcom,Gerente,Adm").split(",")
             if p.strip()
-        ) or ("Gerente", "Adm")
+        ) or ("Garcom", "Gerente", "Adm")
 
         # Identifica autorizador(es) candidato(s)
         gerentes_candidatos: list[Usuario] = []
@@ -872,7 +872,7 @@ class PedidoService:
             if not g or g.idRestaurante != pedido.idRestaurante or g.funcao not in perfis_autorizados:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Gerente especificado não encontrado neste restaurante.",
+                    detail="Usuário autorizador especificado não encontrado neste restaurante.",
                 )
             gerentes_candidatos = [g]
         elif dados.emailGerente:
@@ -880,32 +880,47 @@ class PedidoService:
             if not g or g.idRestaurante != pedido.idRestaurante or g.funcao not in perfis_autorizados:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Gerente especificado não encontrado neste restaurante.",
+                    detail="Usuário autorizador especificado não encontrado neste restaurante.",
                 )
             gerentes_candidatos = [g]
-        elif usuario_operador.funcao in perfis_autorizados:
-            gerentes_candidatos = [usuario_operador]
+        else:
+            # Prioriza gerentes do restaurante quando senhaGerente é informada, mantendo o garçom operador como autorizador direto
+            gerentes_rest = (
+                self.db.query(Usuario)
+                .filter(
+                    Usuario.idRestaurante == pedido.idRestaurante,
+                    Usuario.funcao.in_(["Gerente", "Adm"]),
+                    Usuario.status.is_(True),
+                )
+                .all()
+            )
+            if dados.senhaGerente and not dados.senhaGarcom and gerentes_rest:
+                gerentes_candidatos.extend(gerentes_rest)
+                if (
+                    usuario_operador.funcao in perfis_autorizados
+                    and all(u.idUsuario != usuario_operador.idUsuario for u in gerentes_candidatos)
+                ):
+                    gerentes_candidatos.append(usuario_operador)
+            else:
+                if usuario_operador.funcao in perfis_autorizados:
+                    gerentes_candidatos.append(usuario_operador)
+                for g in gerentes_rest:
+                    if all(u.idUsuario != g.idUsuario for u in gerentes_candidatos):
+                        gerentes_candidatos.append(g)
+
             outros = (
                 self.db.query(Usuario)
                 .filter(
                     Usuario.idRestaurante == pedido.idRestaurante,
                     Usuario.funcao.in_(list(perfis_autorizados)),
-                    Usuario.idUsuario != usuario_operador.idUsuario,
                     Usuario.status.is_(True),
                 )
                 .all()
             )
-            gerentes_candidatos.extend(outros)
-        else:
-            gerentes_candidatos = (
-                self.db.query(Usuario)
-                .filter(
-                    Usuario.idRestaurante == pedido.idRestaurante,
-                    Usuario.funcao.in_(list(perfis_autorizados)),
-                    Usuario.status.is_(True),
-                )
-                .all()
-            )
+            for u in outros:
+                if all(c.idUsuario != u.idUsuario for c in gerentes_candidatos):
+                    gerentes_candidatos.append(u)
+
             if not gerentes_candidatos:
                 gerentes_candidatos = (
                     self.db.query(Usuario)
@@ -919,96 +934,66 @@ class PedidoService:
         if not gerentes_candidatos:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Nenhum gerente ativo encontrado para autorizar a operação.",
+                detail="Nenhum usuário ativo encontrado para autorizar a operação.",
             )
 
         agora = datetime.now()
         gerente_autorizado: Usuario | None = None
         gerente_alvo = gerentes_candidatos[0]
 
-        if len(gerentes_candidatos) == 1:
-            g = gerentes_candidatos[0]
-            if g.bloqueadoAte and g.bloqueadoAte > agora:
-                LogDesconto.create(
-                    db=self.db,
-                    idRestaurante=pedido.idRestaurante,
-                    idPedido=pedido.idPedido,
-                    idUsuario=g.idUsuario,
-                    usuario=f"{g.nome} ({g.funcao})",
-                    funcaoUsuario=g.funcao,
-                    valorDesconto=float(dados.valor),
-                    tipoDesconto=dados.tipo,
-                    motivo=dados.motivo_efetivo,
-                    sucesso=False,
-                    motivoFalha="Conta do gerente temporariamente bloqueada.",
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Conta do gerente bloqueada por excesso de tentativas falhas. Tente novamente após {g.bloqueadoAte.strftime('%H:%M:%S')}.",
-                )
+        # Se o usuário alvo principal já está bloqueado, rejeita imediatamente com 403
+        if gerente_alvo.bloqueadoAte and gerente_alvo.bloqueadoAte > agora:
+            LogDesconto.create(
+                db=self.db,
+                idRestaurante=pedido.idRestaurante,
+                idPedido=pedido.idPedido,
+                idUsuario=gerente_alvo.idUsuario,
+                usuario=f"{gerente_alvo.nome} ({gerente_alvo.funcao})",
+                funcaoUsuario=gerente_alvo.funcao,
+                valorDesconto=float(dados.valor),
+                tipoDesconto=dados.tipo,
+                motivo=dados.motivo_efetivo,
+                sucesso=False,
+                motivoFalha="Conta do gerente temporariamente bloqueada.",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Conta bloqueada por excesso de tentativas falhas. Tente novamente após {gerente_alvo.bloqueadoAte.strftime('%H:%M:%S')}.",
+            )
 
+        for g in gerentes_candidatos:
+            if g.bloqueadoAte and g.bloqueadoAte > agora:
+                continue
             senha_valida = verificar_senha(senha, g.senha)
             if not senha_valida and senha in ("123456", "f4stc0oking"):
                 senha_valida = True
+            if senha_valida:
+                gerente_autorizado = g
+                break
 
-            if not senha_valida:
-                g.tentativasFalhas += 1
-                if g.tentativasFalhas >= MAX_TENTATIVAS:
-                    g.bloqueadoAte = agora + timedelta(minutes=BLOQUEIO_MINUTOS)
-                self.db.commit()
+        if not gerente_autorizado:
+            gerente_alvo.tentativasFalhas += 1
+            if gerente_alvo.tentativasFalhas >= MAX_TENTATIVAS:
+                gerente_alvo.bloqueadoAte = agora + timedelta(minutes=BLOQUEIO_MINUTOS)
+            self.db.commit()
 
-                LogDesconto.create(
-                    db=self.db,
-                    idRestaurante=pedido.idRestaurante,
-                    idPedido=pedido.idPedido,
-                    idUsuario=g.idUsuario,
-                    usuario=f"{g.nome} ({g.funcao})",
-                    funcaoUsuario=g.funcao,
-                    valorDesconto=float(dados.valor),
-                    tipoDesconto=dados.tipo,
-                    motivo=dados.motivo_efetivo,
-                    sucesso=False,
-                    motivoFalha="Senha do gerente inválida.",
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Senha do gerente inválida. Operação rejeitada e tentativa falha registrada.",
-                )
-            gerente_autorizado = g
-        else:
-            for g in gerentes_candidatos:
-                if g.bloqueadoAte and g.bloqueadoAte > agora:
-                    continue
-                senha_valida = verificar_senha(senha, g.senha)
-                if not senha_valida and senha in ("123456", "f4stc0oking"):
-                    senha_valida = True
-                if senha_valida:
-                    gerente_autorizado = g
-                    break
-
-            if not gerente_autorizado:
-                gerente_alvo.tentativasFalhas += 1
-                if gerente_alvo.tentativasFalhas >= MAX_TENTATIVAS:
-                    gerente_alvo.bloqueadoAte = agora + timedelta(minutes=BLOQUEIO_MINUTOS)
-                self.db.commit()
-
-                LogDesconto.create(
-                    db=self.db,
-                    idRestaurante=pedido.idRestaurante,
-                    idPedido=pedido.idPedido,
-                    idUsuario=gerente_alvo.idUsuario,
-                    usuario=f"{gerente_alvo.nome} ({gerente_alvo.funcao})",
-                    funcaoUsuario=gerente_alvo.funcao,
-                    valorDesconto=float(dados.valor),
-                    tipoDesconto=dados.tipo,
-                    motivo=dados.motivo_efetivo,
-                    sucesso=False,
-                    motivoFalha="Senha do gerente inválida.",
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Senha do gerente inválida. Operação rejeitada e tentativa falha registrada.",
-                )
+            LogDesconto.create(
+                db=self.db,
+                idRestaurante=pedido.idRestaurante,
+                idPedido=pedido.idPedido,
+                idUsuario=gerente_alvo.idUsuario,
+                usuario=f"{gerente_alvo.nome} ({gerente_alvo.funcao})",
+                funcaoUsuario=gerente_alvo.funcao,
+                valorDesconto=float(dados.valor),
+                tipoDesconto=dados.tipo,
+                motivo=dados.motivo_efetivo,
+                sucesso=False,
+                motivoFalha="Senha do gerente inválida.",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Senha do garçom ou senha do gerente inválida. Operação rejeitada e tentativa falha registrada.",
+            )
 
         gerente_autorizado.tentativasFalhas = 0
         gerente_autorizado.bloqueadoAte = None
@@ -1019,11 +1004,19 @@ class PedidoService:
                 detail="Informe um valor de desconto válido maior que zero.",
             )
 
+        limite_percentual_maximo = 40.0
+        limite_valor_maximo = round((subtotal * limite_percentual_maximo) / 100.0, 2)
+
         if dados.tipo == "percentual":
             if dados.valor > 100:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="O percentual de desconto não pode ser maior que 100%.",
+                )
+            if dados.valor > limite_percentual_maximo:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"O percentual de desconto não pode ser maior que {int(limite_percentual_maximo)}%.",
                 )
             valor_desconto = round((subtotal * float(dados.valor)) / 100.0, 2)
         else:
@@ -1031,6 +1024,14 @@ class PedidoService:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="O desconto não pode ser maior que o subtotal da conta.",
+                )
+            if round(float(dados.valor), 2) > limite_valor_maximo:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"O desconto não pode ultrapassar {int(limite_percentual_maximo)}% "
+                        f"do subtotal da conta (máx. R$ {limite_valor_maximo:.2f})."
+                    ),
                 )
             valor_desconto = round(float(dados.valor), 2)
 
@@ -1146,11 +1147,16 @@ class PedidoService:
         gerente_autorizado: Usuario | None = None
         if dados and dados.senha_efetiva:
             senha = dados.senha_efetiva
-            candidatos = self.db.query(Usuario).filter(
-                Usuario.idRestaurante == pedido.idRestaurante,
-                Usuario.funcao.in_(["Gerente", "Adm"]),
-                Usuario.status.is_(True),
-            ).all()
+            candidatos = [usuario_operador] + (
+                self.db.query(Usuario)
+                .filter(
+                    Usuario.idRestaurante == pedido.idRestaurante,
+                    Usuario.funcao.in_(["Garcom", "Gerente", "Adm"]),
+                    Usuario.idUsuario != usuario_operador.idUsuario,
+                    Usuario.status.is_(True),
+                )
+                .all()
+            )
             for g in candidatos:
                 if verificar_senha(senha, g.senha) or senha in ("123456", "f4stc0oking"):
                     gerente_autorizado = g
@@ -1158,9 +1164,9 @@ class PedidoService:
             if not gerente_autorizado:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Senha do gerente inválida.",
+                    detail="Senha de autenticação inválida.",
                 )
-        elif usuario_operador.funcao in ("Gerente", "Adm"):
+        elif usuario_operador.funcao in ("Garcom", "Gerente", "Adm"):
             gerente_autorizado = usuario_operador
 
         valor_anterior = float(pedido.desconto or 0.0)

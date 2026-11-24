@@ -507,3 +507,58 @@ def test_aplicar_desconto_via_endpoint_mesa(client, cenario_desconto):
     assert resp.json()["sucesso"] is True
     assert resp.json()["pedido"]["desconto"] == 15.0
     assert resp.json()["pedido"]["total"] == 75.0
+
+
+def test_garcom_aplica_desconto_com_propria_senha_e_trava_40_porcento(
+    client, cenario_desconto, db_session
+):
+    """Garçom autentica desconto com sua própria senha e respeita a trava máxima de 40%."""
+    pedido = cenario_desconto["pedido"]
+    headers_garcom = cenario_desconto["headers_garcom"]
+
+    # 1. Tentativa percentual acima de 40% (ex: 45%) -> Rejeitado 400
+    resp_acima_pct = client.post(
+        f"/pedidos/{pedido.idPedido}/desconto",
+        json={
+            "senhaGarcom": "senhaGarcom123",
+            "tipo": "percentual",
+            "valor": 45.0,
+            "motivo": "Desconto acima do limite",
+        },
+        headers=headers_garcom,
+    )
+    assert resp_acima_pct.status_code == 400
+    assert "40%" in resp_acima_pct.json()["detail"]
+
+    # 2. Tentativa em valor (R$) acima de 40% do subtotal (Subtotal=90, 40%=36 -> tenta R$ 40) -> Rejeitado 400
+    resp_acima_valor = client.post(
+        f"/pedidos/{pedido.idPedido}/desconto",
+        json={
+            "senhaGarcom": "senhaGarcom123",
+            "tipo": "valor",
+            "valor": 40.0,
+            "motivo": "Valor acima de 40%",
+        },
+        headers=headers_garcom,
+    )
+    assert resp_acima_valor.status_code == 400
+    assert "40%" in resp_acima_valor.json()["detail"]
+
+    # 3. Aplicação válida de 40% autenticada com a senha do próprio garçom -> Sucesso 200 (Desconto = R$ 36,00)
+    resp_valido = client.post(
+        f"/pedidos/{pedido.idPedido}/desconto",
+        json={
+            "senhaGarcom": "senhaGarcom123",
+            "tipo": "percentual",
+            "valor": 40.0,
+            "motivo": "Desconto máximo autorizado pelo garçom",
+        },
+        headers=headers_garcom,
+    )
+    assert resp_valido.status_code == 200
+    dados = resp_valido.json()
+    assert dados["sucesso"] is True
+    assert dados["pedido"]["desconto"] == 36.0
+    assert dados["pedido"]["total"] == 54.0
+    assert dados["desconto"]["gerente"] == "Garçom Marcos"
+    assert dados["desconto"]["funcaoGerente"] == "Garcom"

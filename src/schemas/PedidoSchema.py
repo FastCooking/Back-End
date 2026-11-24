@@ -100,18 +100,19 @@ class ItemCancelamentoRequest(BaseModel):
 
 
 class DescontoApplyRequest(BaseModel):
-    senhaGerente: str | None = Field(None, description="Senha do gerente autorizador da operação")
-    senha: str | None = Field(None, description="Alias para senhaGerente")
+    senhaGerente: str | None = Field(None, description="Senha de autenticação para autorizar o desconto")
+    senhaGarcom: str | None = Field(None, description="Senha do garçom autorizador da operação")
+    senha: str | None = Field(None, description="Alias para senha de autenticação")
     tipo: str = Field(default="valor", description="Tipo do desconto: 'percentual' ou 'valor'")
     valor: float = Field(..., gt=0, description="Valor do desconto (reais ou percentual)")
     motivo: str | None = Field(None, description="Motivo ou justificativa da concessão do desconto")
     justificativa: str | None = Field(None, description="Alias para motivo")
-    emailGerente: str | None = Field(None, description="E-mail opcional do gerente para identificação direta")
-    idGerente: uuid.UUID | None = Field(None, description="ID opcional do gerente para identificação direta")
+    emailGerente: str | None = Field(None, description="E-mail opcional do autorizador para identificação direta")
+    idGerente: uuid.UUID | None = Field(None, description="ID opcional do autorizador para identificação direta")
 
     @property
     def senha_efetiva(self) -> str:
-        s = self.senhaGerente or self.senha or ""
+        s = self.senhaGarcom or self.senhaGerente or self.senha or ""
         return s.strip()
 
     @property
@@ -120,15 +121,16 @@ class DescontoApplyRequest(BaseModel):
 
 
 class DescontoRemoverRequest(BaseModel):
-    senhaGerente: str | None = Field(None, description="Senha do gerente para autorizar remoção")
-    senha: str | None = Field(None, description="Alias para senhaGerente")
+    senhaGerente: str | None = Field(None, description="Senha para autorizar remoção do desconto")
+    senhaGarcom: str | None = Field(None, description="Senha do garçom para autorizar remoção")
+    senha: str | None = Field(None, description="Alias para senha de autenticação")
     motivo: str | None = Field(None, description="Motivo da remoção do desconto")
-    emailGerente: str | None = Field(None, description="E-mail opcional do gerente")
-    idGerente: uuid.UUID | None = Field(None, description="ID opcional do gerente")
+    emailGerente: str | None = Field(None, description="E-mail opcional do autorizador")
+    idGerente: uuid.UUID | None = Field(None, description="ID opcional do autorizador")
 
     @property
     def senha_efetiva(self) -> str:
-        s = self.senhaGerente or self.senha or ""
+        s = self.senhaGarcom or self.senhaGerente or self.senha or ""
         return s.strip()
 
 
