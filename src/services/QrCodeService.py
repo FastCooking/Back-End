@@ -29,7 +29,7 @@ class QrCodeService:
             origin
             or os.getenv(
                 "FRONTEND_BASE_URL",
-                "https://fastcooking-front-end.vercel.app",
+                "https://fastcooking-front-dev.vercel.app",
             )
         ).rstrip("/")
 
@@ -37,7 +37,7 @@ class QrCodeService:
         if cache_key in _QRCODE_CACHE:
             return BytesIO(_QRCODE_CACHE[cache_key])
 
-        url = f"{base_url}/cardapio?idMesa={mesa.idMesa}&idRestaurante={mesa.idRestaurante}&mesa={mesa.numero}"
+        url = f"{base_url}/autoatendimento?idMesa={mesa.idMesa}&idRestaurante={mesa.idRestaurante}&mesa={mesa.numero}"
 
         imagem = qrcode.make(url)
         arquivo = BytesIO()

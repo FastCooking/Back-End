@@ -1,3 +1,4 @@
+import os
 import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
@@ -857,11 +858,18 @@ class PedidoService:
                 detail="A senha do gerente é obrigatória para autorizar o desconto.",
             )
 
-        # Identifica gerente(s) candidato(s)
+        # Perfis autorizados a autenticar desconto por senha (configurável entre Gerente/Adm ou Garcom)
+        perfis_autorizados = tuple(
+            p.strip()
+            for p in os.getenv("PERFIS_AUTORIZADOS_DESCONTO", "Gerente,Adm").split(",")
+            if p.strip()
+        ) or ("Gerente", "Adm")
+
+        # Identifica autorizador(es) candidato(s)
         gerentes_candidatos: list[Usuario] = []
         if dados.idGerente:
             g = Usuario.get_by_id(self.db, dados.idGerente)
-            if not g or g.idRestaurante != pedido.idRestaurante or g.funcao not in ("Gerente", "Adm"):
+            if not g or g.idRestaurante != pedido.idRestaurante or g.funcao not in perfis_autorizados:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Gerente especificado não encontrado neste restaurante.",
@@ -869,19 +877,19 @@ class PedidoService:
             gerentes_candidatos = [g]
         elif dados.emailGerente:
             g = Usuario.get_by_email(self.db, dados.emailGerente)
-            if not g or g.idRestaurante != pedido.idRestaurante or g.funcao not in ("Gerente", "Adm"):
+            if not g or g.idRestaurante != pedido.idRestaurante or g.funcao not in perfis_autorizados:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Gerente especificado não encontrado neste restaurante.",
                 )
             gerentes_candidatos = [g]
-        elif usuario_operador.funcao in ("Gerente", "Adm"):
+        elif usuario_operador.funcao in perfis_autorizados:
             gerentes_candidatos = [usuario_operador]
             outros = (
                 self.db.query(Usuario)
                 .filter(
                     Usuario.idRestaurante == pedido.idRestaurante,
-                    Usuario.funcao.in_(["Gerente", "Adm"]),
+                    Usuario.funcao.in_(list(perfis_autorizados)),
                     Usuario.idUsuario != usuario_operador.idUsuario,
                     Usuario.status.is_(True),
                 )
@@ -893,7 +901,7 @@ class PedidoService:
                 self.db.query(Usuario)
                 .filter(
                     Usuario.idRestaurante == pedido.idRestaurante,
-                    Usuario.funcao.in_(["Gerente", "Adm"]),
+                    Usuario.funcao.in_(list(perfis_autorizados)),
                     Usuario.status.is_(True),
                 )
                 .all()
