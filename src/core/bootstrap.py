@@ -124,6 +124,10 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                             WHERE table_name = 'LogDesconto'
                         )
                         AND EXISTS (
+                            SELECT 1 FROM information_schema.tables
+                            WHERE table_name = 'AuditoriaCancelamentoItem'
+                        )
+                        AND EXISTS (
                             SELECT 1 FROM information_schema.columns
                             WHERE table_name = 'Cardapio' AND column_name = 'tempoPreparo'
                         )
@@ -187,6 +191,27 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                         );
                     END IF;
 
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.tables WHERE table_name = 'AuditoriaCancelamentoItem'
+                    ) THEN
+                        CREATE TABLE "AuditoriaCancelamentoItem" (
+                            "idAuditoria" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                            "idItemPedido" UUID NOT NULL REFERENCES "ItemPedido"("idItemPedido") ON UPDATE CASCADE ON DELETE RESTRICT,
+                            "idPedido" UUID NOT NULL REFERENCES "Pedido"("idPedido") ON UPDATE CASCADE ON DELETE RESTRICT,
+                            "idMesa" UUID NOT NULL REFERENCES "Mesa"("idMesa") ON UPDATE CASCADE ON DELETE RESTRICT,
+                            "sessao_id" VARCHAR(100),
+                            "origem" VARCHAR(20) NOT NULL,
+                            "idUsuario" UUID,
+                            "motivo" TEXT,
+                            "dataHora" TIMESTAMPTZ NOT NULL DEFAULT now(),
+                            CONSTRAINT ck_auditoria_cancelamento_origem CHECK ("origem" IN ('CLIENTE', 'GARCOM', 'GERENTE', 'ADM')),
+                            CONSTRAINT ck_auditoria_cancelamento_responsavel_motivo CHECK (
+                                ("origem" = 'CLIENTE' AND "idUsuario" IS NULL AND "motivo" IS NULL)
+                                OR ("origem" IN ('GARCOM', 'GERENTE', 'ADM') AND "idUsuario" IS NOT NULL AND "motivo" IS NOT NULL AND length(trim("motivo")) > 0)
+                            )
+                        );
+                    END IF;
+
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'Cardapio'
                     ) AND NOT EXISTS (
@@ -218,6 +243,8 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
                 CREATE INDEX IF NOT EXISTS ix_pagamento_pedido ON "Pagamento" ("idPedido");
                 CREATE INDEX IF NOT EXISTS "idx_LogDesconto_Pedido" ON "LogDesconto" ("idPedido");
                 CREATE INDEX IF NOT EXISTS "idx_LogDesconto_Restaurante" ON "LogDesconto" ("idRestaurante");
+                CREATE INDEX IF NOT EXISTS ix_auditoria_cancelamento_item ON "AuditoriaCancelamentoItem" ("idItemPedido");
+                CREATE INDEX IF NOT EXISTS ix_auditoria_cancelamento_pedido ON "AuditoriaCancelamentoItem" ("idPedido");
             """))
             db.commit()
             logger.info("Migrações seguras executadas com sucesso.")
