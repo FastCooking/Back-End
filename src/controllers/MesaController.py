@@ -64,16 +64,24 @@ def listar_mesas(
         )
     SessaoService.expirar_sessoes_inativas(db, limite_minutos=10)
     mesas = Mesa.get_all_by_restaurant(db, rest_id, status)
+    pedidos_ativos = (
+        db.query(Pedido.idMesa, Pedido.idPedido)
+        .filter(
+            Pedido.idRestaurante == rest_id,
+            Pedido.status.notin_(["Fechado", "Cancelado"]),
+        )
+        .all()
+    )
+    mapa_pedidos_ativos = {id_mesa: id_pedido for id_mesa, id_pedido in pedidos_ativos}
     resultado = []
     for m in mesas:
-        ped = Pedido.get_active_for_table(db, m.idMesa)
         resultado.append(
             MesaResponse(
                 idMesa=m.idMesa,
                 idRestaurante=m.idRestaurante,
                 numero=m.numero,
                 status=m.status,
-                idPedidoAtivo=ped.idPedido if ped else None,
+                idPedidoAtivo=mapa_pedidos_ativos.get(m.idMesa),
             )
         )
     return resultado

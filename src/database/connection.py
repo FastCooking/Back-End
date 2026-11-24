@@ -23,11 +23,17 @@ if url_obj.drivername in ("postgresql", "postgres"):
     DATABASE_URL = url_obj.set(drivername="postgresql+psycopg").render_as_string(
         hide_password=False
     )
+    is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+    default_pool_size = "3" if is_serverless else "10"
+    default_max_overflow = "5" if is_serverless else "10"
     engine_kwargs.update({
-        "pool_size": int(os.getenv("DB_POOL_SIZE", "20")),
-        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "15")),
-        "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
-        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "1800")),
+        "pool_size": int(os.getenv("DB_POOL_SIZE", default_pool_size)),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", default_max_overflow)),
+        "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "15")),
+        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "300")),
+        "connect_args": {
+            "connect_timeout": 10,
+        },
     })
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)

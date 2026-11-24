@@ -141,13 +141,19 @@ class FichaTecnicaService:
                 insumos=[],
             )
 
+        estoque_ids = [ficha.idEstoque for ficha in fichas]
+        insumos_db = (
+            self.db.query(Estoque)
+            .filter(Estoque.idEstoque.in_(estoque_ids))
+            .all()
+            if estoque_ids
+            else []
+        )
+        mapa_insumos = {ins.idEstoque: ins for ins in insumos_db}
+
         insumos_cardapio = []
         for ficha in fichas:
-            insumo_db = (
-                self.db.query(Estoque)
-                .filter(Estoque.idEstoque == ficha.idEstoque)
-                .first()
-            )
+            insumo_db = mapa_insumos.get(ficha.idEstoque)
             nome_insumo = insumo_db.nome if insumo_db else "Insumo desconhecido"
             unidade_medida = insumo_db.unidadeMedida if insumo_db else "UN"
 

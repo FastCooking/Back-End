@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from src.core.realtime import realtime_hub
 from src.core.security import decodificar_token, exigir_funcao, get_user_from_token
-from src.database.connection import get_db
+from src.database.connection import SessionLocal, get_db
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
 from src.models.Pagamento import Pagamento
@@ -234,14 +234,29 @@ async def tracking_websocket(
     await handle_tracking_websocket(websocket, idPedido, db)
 
 
+def _obter_tracking_snapshot_curto(
+    idPedido: uuid.UUID,
+    db: Session | None = None,
+) -> dict:
+    if db is not None:
+        try:
+            return PedidoService(db).get_order_tracking(idPedido)
+        finally:
+            try:
+                db.close()
+            except Exception:  # noqa: BLE001
+                pass
+    with SessionLocal() as short_db:
+        return PedidoService(short_db).get_order_tracking(idPedido)
+
+
 async def handle_tracking_websocket(
     websocket: WebSocket,
     idPedido: uuid.UUID,
-    db: Session,
+    db: Session | None = None,
 ) -> None:
     await websocket.accept()
-    service = PedidoService(db)
-    snapshot = service.get_order_tracking(idPedido)
+    snapshot = _obter_tracking_snapshot_curto(idPedido, db)
     if snapshot.get("type") == "ERROR":
         await websocket.send_json(snapshot)
         await websocket.close(code=4404)
@@ -250,7 +265,7 @@ async def handle_tracking_websocket(
     await realtime_hub.connect_tracking(
         websocket=websocket,
         order_id=idPedido,
-        snapshot_factory=lambda: service.get_order_tracking(idPedido),
+        snapshot_factory=lambda: _obter_tracking_snapshot_curto(idPedido, db),
     )
 
     try:
@@ -686,6 +701,22 @@ def obter_fila(
     return PedidoService(db).queue_snapshot(usuario)
 
 
+def _obter_queue_snapshot_curto(
+    usuario: Usuario,
+    db: Session | None = None,
+) -> dict:
+    if db is not None:
+        try:
+            return PedidoService(db).queue_snapshot(usuario)
+        finally:
+            try:
+                db.close()
+            except Exception:  # noqa: BLE001
+                pass
+    with SessionLocal() as short_db:
+        return PedidoService(short_db).queue_snapshot(usuario)
+
+
 @router.websocket("/kds/ws")
 @router.websocket("/ws")
 async def pedidos_websocket(
@@ -708,27 +739,33 @@ async def pedidos_websocket(
         )
 
         if not isinstance(token, str) or not token:
+            db.close()
             await websocket.close(code=4401)
             return
 
         try:
             usuario = get_user_from_token(token, db)
+            snapshot_inicial = PedidoService(db).queue_snapshot(usuario)
         except HTTPException:
+            db.close()
             await websocket.close(code=4401)
             return
+        finally:
+            try:
+                db.close()
+            except Exception:  # noqa: BLE001
+                pass
 
         if usuario.funcao not in ("Cozinheiro", "Garcom", "Gerente"):
             await websocket.close(code=4403)
             return
-
-        service = PedidoService(db)
 
         await realtime_hub.connect_and_sync(
             websocket=websocket,
             restaurant_id=usuario.idRestaurante,
             user_id=usuario.idUsuario,
             role=usuario.funcao,
-            snapshot_factory=lambda: service.queue_snapshot(usuario),
+            snapshot_factory=lambda: snapshot_inicial,
         )
 
         while True:
@@ -740,7 +777,7 @@ async def pedidos_websocket(
             except TimeoutError:
                 conectado = await realtime_hub.refresh_queue(
                     websocket=websocket,
-                    snapshot_factory=lambda: service.queue_snapshot(usuario),
+                    snapshot_factory=lambda: _obter_queue_snapshot_curto(usuario, db),
                 )
 
                 if not conectado:
@@ -820,8 +857,14 @@ async def handle_waiter_room_websocket(
             claims = decodificar_token(token)
             usuario = get_user_from_token(token, db)
         except HTTPException:
+            db.close()
             await websocket.close(code=4401)
             return
+        finally:
+            try:
+                db.close()
+            except Exception:  # noqa: BLE001
+                pass
 
         effective_role = claims.get("funcao") or usuario.funcao
         effective_shift = (

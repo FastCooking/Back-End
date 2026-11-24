@@ -102,7 +102,7 @@ def garantir_usuario_admin(db: Session | None = None) -> Usuario | None:
 
 
 def executar_migracoes_seguras(db: Session | None = None) -> None:
-    """Aplica migrações DDL seguras (colunas novas com IF NOT EXISTS) de forma idempotente."""
+    """Aplica migrações DDL seguras apenas se as colunas/tabelas ainda não existirem, evitando locks exclusivos."""
     close_session = False
     if db is None:
         db = SessionLocal()
@@ -111,69 +111,99 @@ def executar_migracoes_seguras(db: Session | None = None) -> None:
         from sqlalchemy import text
         bind_engine = db.get_bind()
         if bind_engine.dialect.name in ("postgresql", "postgres"):
+            # Verifica primeiro apenas com SELECT (sem ACCESS EXCLUSIVE lock) se o schema já está atualizado
+            ja_migrado = db.execute(
+                text("""
+                    SELECT (
+                        EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'Pedido' AND column_name = 'desconto'
+                        )
+                        AND EXISTS (
+                            SELECT 1 FROM information_schema.tables
+                            WHERE table_name = 'LogDesconto'
+                        )
+                        AND EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'Cardapio' AND column_name = 'tempoPreparo'
+                        )
+                        AND EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'ItemPedido' AND column_name = 'origem'
+                        )
+                    )
+                """)
+            ).scalar()
+            db.commit()
+            if ja_migrado:
+                return
+
+            db.execute(text("SET LOCAL lock_timeout = '3s';"))
             db.execute(text("""
                 DO $$
                 BEGIN
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'Pedido'
                     ) THEN
-                        ALTER TABLE "Pedido"
-                        ADD COLUMN IF NOT EXISTS "idUsuarioFechamento" UUID
-                        REFERENCES "Usuarios"("idUsuario")
-                        ON UPDATE CASCADE ON DELETE SET NULL;
-
-                        ALTER TABLE "Pedido"
-                        ADD COLUMN IF NOT EXISTS "desconto" NUMERIC(10, 2) NOT NULL DEFAULT 0.0;
-
-                        ALTER TABLE "Pedido"
-                        ADD COLUMN IF NOT EXISTS "tipoDesconto" VARCHAR(20);
-
-                        ALTER TABLE "Pedido"
-                        ADD COLUMN IF NOT EXISTS "valorDescontoInformado" NUMERIC(10, 2);
-
-                        ALTER TABLE "Pedido"
-                        ADD COLUMN IF NOT EXISTS "motivoDesconto" VARCHAR(255);
-
-                        ALTER TABLE "Pedido"
-                        ADD COLUMN IF NOT EXISTS "idGerenteDesconto" UUID
-                        REFERENCES "Usuarios"("idUsuario")
-                        ON UPDATE CASCADE ON DELETE SET NULL;
-
-                        ALTER TABLE "Pedido"
-                        ADD COLUMN IF NOT EXISTS "dataDesconto" TIMESTAMP;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Pedido' AND column_name = 'idUsuarioFechamento') THEN
+                            ALTER TABLE "Pedido" ADD COLUMN "idUsuarioFechamento" UUID REFERENCES "Usuarios"("idUsuario") ON UPDATE CASCADE ON DELETE SET NULL;
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Pedido' AND column_name = 'desconto') THEN
+                            ALTER TABLE "Pedido" ADD COLUMN "desconto" NUMERIC(10, 2) NOT NULL DEFAULT 0.0;
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Pedido' AND column_name = 'tipoDesconto') THEN
+                            ALTER TABLE "Pedido" ADD COLUMN "tipoDesconto" VARCHAR(20);
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Pedido' AND column_name = 'valorDescontoInformado') THEN
+                            ALTER TABLE "Pedido" ADD COLUMN "valorDescontoInformado" NUMERIC(10, 2);
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Pedido' AND column_name = 'motivoDesconto') THEN
+                            ALTER TABLE "Pedido" ADD COLUMN "motivoDesconto" VARCHAR(255);
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Pedido' AND column_name = 'idGerenteDesconto') THEN
+                            ALTER TABLE "Pedido" ADD COLUMN "idGerenteDesconto" UUID REFERENCES "Usuarios"("idUsuario") ON UPDATE CASCADE ON DELETE SET NULL;
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Pedido' AND column_name = 'dataDesconto') THEN
+                            ALTER TABLE "Pedido" ADD COLUMN "dataDesconto" TIMESTAMP;
+                        END IF;
                     END IF;
 
-                    CREATE TABLE IF NOT EXISTS "LogDesconto" (
-                        "idLogDesconto" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        "idRestaurante" UUID NOT NULL REFERENCES "Restaurante"("idRestaurante") ON UPDATE CASCADE ON DELETE CASCADE,
-                        "idPedido" UUID REFERENCES "Pedido"("idPedido") ON UPDATE CASCADE ON DELETE CASCADE,
-                        "idUsuario" UUID REFERENCES "Usuarios"("idUsuario") ON UPDATE CASCADE ON DELETE SET NULL,
-                        "usuario" VARCHAR(255) NOT NULL,
-                        "funcaoUsuario" VARCHAR(50),
-                        "valorDesconto" NUMERIC(10, 2) NOT NULL DEFAULT 0.0,
-                        "tipoDesconto" VARCHAR(20),
-                        "motivo" TEXT,
-                        "sucesso" BOOLEAN NOT NULL DEFAULT TRUE,
-                        "motivoFalha" VARCHAR(255),
-                        "dataHora" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                    );
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.tables WHERE table_name = 'LogDesconto'
+                    ) THEN
+                        CREATE TABLE "LogDesconto" (
+                            "idLogDesconto" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                            "idRestaurante" UUID NOT NULL REFERENCES "Restaurante"("idRestaurante") ON UPDATE CASCADE ON DELETE CASCADE,
+                            "idPedido" UUID REFERENCES "Pedido"("idPedido") ON UPDATE CASCADE ON DELETE CASCADE,
+                            "idUsuario" UUID REFERENCES "Usuarios"("idUsuario") ON UPDATE CASCADE ON DELETE SET NULL,
+                            "usuario" VARCHAR(255) NOT NULL,
+                            "funcaoUsuario" VARCHAR(50),
+                            "valorDesconto" NUMERIC(10, 2) NOT NULL DEFAULT 0.0,
+                            "tipoDesconto" VARCHAR(20),
+                            "motivo" TEXT,
+                            "sucesso" BOOLEAN NOT NULL DEFAULT TRUE,
+                            "motivoFalha" VARCHAR(255),
+                            "dataHora" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        );
+                    END IF;
 
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'Cardapio'
+                    ) AND NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns WHERE table_name = 'Cardapio' AND column_name = 'tempoPreparo'
                     ) THEN
-                        ALTER TABLE "Cardapio"
-                        ADD COLUMN IF NOT EXISTS "tempoPreparo" INTEGER NOT NULL DEFAULT 15;
+                        ALTER TABLE "Cardapio" ADD COLUMN "tempoPreparo" INTEGER NOT NULL DEFAULT 15;
                     END IF;
 
                     IF EXISTS (
                         SELECT 1 FROM information_schema.tables WHERE table_name = 'ItemPedido'
+                    ) AND NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns WHERE table_name = 'ItemPedido' AND column_name = 'origem'
                     ) THEN
-                        ALTER TABLE "ItemPedido"
-                        ADD COLUMN IF NOT EXISTS "origem" VARCHAR(20) NOT NULL DEFAULT 'CLIENTE';
+                        ALTER TABLE "ItemPedido" ADD COLUMN "origem" VARCHAR(20) NOT NULL DEFAULT 'CLIENTE';
                     END IF;
                 END $$;
             """))
-            # Índices de performance para PostgreSQL
             db.execute(text("""
                 CREATE INDEX IF NOT EXISTS ix_item_pedido_kds ON "ItemPedido" ("idPedido", "status", "liberadoParaPreparo");
                 CREATE INDEX IF NOT EXISTS ix_item_pedido_status ON "ItemPedido" ("status");
