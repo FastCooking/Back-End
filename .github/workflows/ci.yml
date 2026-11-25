@@ -5,10 +5,13 @@ on:
     branches:
       - main
       - develop
+      - dev
   pull_request:
     branches:
       - main
       - develop
+      - dev
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,11 +19,15 @@ permissions:
 jobs:
   test-dev:
     name: Lint & Test (Dev)
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/dev' || github.base_ref == 'develop' || github.base_ref == 'dev' || github.head_ref == 'develop' || github.head_ref == 'dev'
+    if: >-
+      ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/dev')) ||
+      (github.event_name == 'pull_request' &&
+      (github.base_ref == 'develop' || github.base_ref == 'dev'))
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16
         env:
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
@@ -37,8 +44,8 @@ jobs:
 
     env:
       DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/fastcooking_test
-      SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
-      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY || 'ci-dev-secret-key' }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET || 'ci-dev-jwt-secret' }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
       SERVER_PORT: ${{ vars.SERVER_PORT || secrets.SERVER_PORT || '8000' }}
       APP_ENV: ${{ vars.APP_ENV || 'development' }}
@@ -66,11 +73,14 @@ jobs:
 
   test-prod:
     name: Lint & Test (Prod)
-    if: (github.ref == 'refs/heads/main' || github.base_ref == 'main') && !(github.head_ref == 'develop' || github.head_ref == 'dev')
+    if: >-
+      ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'main')
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16
         env:
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
@@ -83,12 +93,12 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    environment: Production
+    environment: ${{ github.ref == 'refs/heads/main' && 'Production' || '' }}
 
     env:
       DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/fastcooking_test
-      SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY }}
-      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY || vars.SECRET_KEY || 'ci-prod-test-secret-key' }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET || 'ci-prod-test-jwt-secret' }}
       BCRYPT_ROUNDS: ${{ vars.BCRYPT_ROUNDS || secrets.BCRYPT_ROUNDS || '12' }}
       SERVER_PORT: ${{ vars.SERVER_PORT || secrets.SERVER_PORT || '8000' }}
       APP_ENV: ${{ vars.APP_ENV || 'production' }}
