@@ -355,7 +355,24 @@ python src/app.py
 ### 8.3 Execução via Docker Compose
 Na raiz do projeto (`c:\Users\Carlos\Documents\labs\FastCooking`):
 ```bash
-docker-compose up --build
+# Copiar e preencher variáveis de ambiente (PostgreSQL, TZ e Backup)
+cp .env.example .env
+
+docker compose up -d --build
 ```
+- PostgreSQL 16 (PITR): `localhost:5432` (container `fastcooking_postgres`)
+- Agendador de Backup (pgBackRest): container `fastcooking_postgres_backup` (`03:00` `America/Sao_Paulo`)
 - Back-End: `http://localhost:8000` (Docs Swagger em `http://localhost:8000/docs`)
 - Front-End: `http://localhost:5173`
+
+---
+
+## 9. Backup Diário, Retenção (30 dias) e PITR (RPO <= 5 min)
+
+A camada de persistência em Docker conta com proteção nativa contra perda de dados e recuperação pontual (PITR) via **PostgreSQL 16 + pgBackRest** (`infra/postgres/`):
+
+- **Backup Completo Diário na Madrugada:** Executado automaticamente pelo serviço `postgres-backup` às `03:00` no fuso horário explícito `America/Sao_Paulo` (`TZ` e `CRON_TZ`), evitando impacto no horário comercial.
+- **Retenção Mínima de 30 Dias:** Configurada com `repo1-retention-full-type=time` e `repo1-retention-full=30`. O expurgo automático (`pgbackrest expire`) remove apenas backups > 30 dias e segmentos WAL estritamente anteriores ao backup mais antigo ainda válido, sem risco de corromper cadeias de restauração ativas.
+- **Arquivamento Contínuo de WAL (RPO <= 5 min):** `wal_level = replica`, `archive_mode = on`, `archive_command = 'pgbackrest --stanza=fastcooking archive-push %p'` e `archive_timeout = 240s` (4 minutos, abaixo do teto de 300s), preservando 100% da integridade referencial entre `Pedido`, `ItemPedido`, `Pagamento` e demais entidades.
+- **Segurança:** Credenciais gerenciadas exclusivamente via `.env` (`.env.example`) ou Docker Secrets (`POSTGRES_PASSWORD_FILE`), sem hardcode.
+- **Validação e Runbook Completo:** Consulte [docs/backup-pitr-runbook.md](file:///c:/Users/Carlos/Documents/labs/FastCooking/Back-End/docs/backup-pitr-runbook.md) para operação, monitoramento de falhas, restauração PITR isolada (`infra/postgres/scripts/restore-pitr.sh`) e validação automatizada de RPO (`infra/postgres/scripts/test-rpo-validation.sh`).
