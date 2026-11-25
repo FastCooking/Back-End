@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from src.models.Mesa import Mesa
 
-
 _QRCODE_CACHE: dict[str, bytes] = {}
 
 

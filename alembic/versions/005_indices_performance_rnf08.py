@@ -7,7 +7,6 @@ Create Date: 2026-11-11 10:35:00.000000
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "005_indices_performance_rnf08"

@@ -1,12 +1,8 @@
 import uuid
-import pytest
-from fastapi.testclient import TestClient
+
 from sqlalchemy import event
 
-from src.app import app
-from src.core.realtime import realtime_hub
 from src.core.security import criar_token
-from src.database.connection import engine
 from src.models.Cardapio import Cardapio
 from src.models.ItemPedido import ItemPedido
 from src.models.Mesa import Mesa
@@ -16,7 +12,7 @@ from src.models.Restaurante import Restaurante
 from src.models.Usuario import Usuario
 from src.services.DeliveryService import DeliveryService
 from src.services.PedidoService import PedidoService
-from src.services.QrCodeService import QrCodeService, _QRCODE_CACHE
+from src.services.QrCodeService import _QRCODE_CACHE, QrCodeService
 
 
 class QueryCounter:
@@ -226,7 +222,7 @@ def test_delivery_service_lock_keys_sem_mutex_de_restaurante(db_session):
 
     try:
         service.claim_delivery(item_id, garcom)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         assert "não existe" in str(exc) or getattr(exc, "code", "") == "ITEM_NOT_FOUND"
 
 
