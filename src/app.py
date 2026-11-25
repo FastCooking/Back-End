@@ -172,7 +172,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     """Garante que erros 500 não quebrem o cabeçalho CORS e retornem mensagem estruturada em JSON."""
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": f"Erro interno do servidor: {str(exc)}"},
+        content={"detail": f"Erro interno do servidor: {exc!s}"},
         headers=_cors_headers(request),
     )
 

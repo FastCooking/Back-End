@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import re
-import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -134,7 +133,7 @@ def registrar_auditoria(
         arquivo_log = obter_caminho_arquivo_auditoria(dt, base_dir=base_dir)
         with open(arquivo_log, "a", encoding="utf-8") as f:
             f.write(linha + "\n")
-    except Exception as exc:
+    except OSError as exc:
         logger.error(f"[AUDITORIA_ERRO] Falha ao gravar log em arquivo: {exc}")
 
     return linha
@@ -378,30 +377,30 @@ def limpar_logs_antigos(dias: int = 90, base_dir: Path | str | None = None) -> d
                             try:
                                 arq.unlink()
                                 arquivos_removidos += 1
-                            except Exception as err:
+                            except OSError as err:
                                 logger.warning(f"[LIMPEZA_LOG] Erro ao remover {arq}: {err}")
                     # Remove o diretório do dia se vazio
                     try:
                         path_dia.rmdir()
                         diretorios_removidos += 1
-                    except Exception:
-                        pass
+                    except OSError:
+                        logger.debug(f"[LIMPEZA_LOG] Diretório {path_dia} não pôde ser removido.")
 
             # Remove mês se vazio
             if path_mes.is_dir() and not any(path_mes.iterdir()):
                 try:
                     path_mes.rmdir()
                     diretorios_removidos += 1
-                except Exception:
-                    pass
+                except OSError:
+                    logger.debug(f"[LIMPEZA_LOG] Diretório {path_mes} não pôde ser removido.")
 
         # Remove ano se vazio
         if path_ano.is_dir() and not any(path_ano.iterdir()):
             try:
                 path_ano.rmdir()
                 diretorios_removidos += 1
-            except Exception:
-                pass
+            except OSError:
+                logger.debug(f"[LIMPEZA_LOG] Diretório {path_ano} não pôde ser removido.")
 
     logger.info(
         f"[LIMPEZA_LOG] Concluída. {arquivos_removidos} arquivo(s) e "
@@ -421,5 +420,5 @@ async def rotina_diaria_limpeza_logs(intervalo_horas: int = 24, dias_retencao: i
             limpar_logs_antigos(dias=dias_retencao)
         except asyncio.CancelledError:
             break
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"[LIMPEZA_LOG_ERRO] Falha no loop diário de limpeza: {e}")

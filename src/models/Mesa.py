@@ -1,7 +1,15 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import Column, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import (
+    Column,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, relationship
 

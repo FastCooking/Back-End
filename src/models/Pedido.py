@@ -227,43 +227,6 @@ class Pedido(Base):
             query = query.filter(cls.status.notin_(["Fechado", "Cancelado"]))
         return query.order_by(cls.dataAbertura.desc()).all()
 
-    @classmethod
-    def create(
-        cls,
-        db: Session,
-        idRestaurante: uuid.UUID | str,
-        idMesa: uuid.UUID | str,
-        idGarcom: uuid.UUID | str | None = None,
-        sessao_id: str | None = None,
-        status: str = "Aberto",
-        commit: bool = True,
-    ) -> "Pedido":
-        pedido = cls(
-            idPedido=uuid.uuid4(),
-            idRestaurante=idRestaurante,
-            idMesa=idMesa,
-            idGarcom=idGarcom,
-            sessao_id=sessao_id,
-            status=status,
-            dataAbertura=datetime.now(),
-        )
-        db.add(pedido)
-        if commit:
-            db.commit()
-            db.refresh(pedido)
-        else:
-            db.flush()
-        return pedido
-
-    def update_stats(self, db: Session, status: str, commit: bool = True) -> "Pedido":
-        self.status = status
-        if status in ("Fechado", "Cancelado") and not self.dataFechamento:
-            self.dataFechamento = datetime.now()
-        if commit:
-            db.commit()
-            db.refresh(self)
-        return self
-
     def close(self, db: Session, commit: bool = True) -> "Pedido":
         return self.update_stats(db, "Fechado", commit=commit)
 

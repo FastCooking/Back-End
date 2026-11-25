@@ -6,9 +6,7 @@ from uuid import uuid4
 import pytest
 
 from src.core.audit_logger import (
-    formatar_linha_auditoria,
     limpar_logs_antigos,
-    log_abertura_mesa,
     log_cancelamento_assistido,
     log_cancelamento_cliente,
     log_desconto,

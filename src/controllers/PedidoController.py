@@ -244,7 +244,7 @@ def _obter_tracking_snapshot_curto(
         finally:
             try:
                 db.close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
     with SessionLocal() as short_db:
         return PedidoService(short_db).get_order_tracking(idPedido)
@@ -711,7 +711,7 @@ def _obter_queue_snapshot_curto(
         finally:
             try:
                 db.close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
     with SessionLocal() as short_db:
         return PedidoService(short_db).queue_snapshot(usuario)
@@ -753,7 +753,7 @@ async def pedidos_websocket(
         finally:
             try:
                 db.close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         if usuario.funcao not in ("Cozinheiro", "Garcom", "Gerente"):
@@ -863,7 +863,7 @@ async def handle_waiter_room_websocket(
         finally:
             try:
                 db.close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         effective_role = claims.get("funcao") or usuario.funcao

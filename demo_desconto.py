@@ -70,7 +70,7 @@ def main():
         status=True,
     )
 
-    gerente = Usuario.create(
+    Usuario.create(
         db,
         idRestaurante=rest.idRestaurante,
         nome="Carlos Silva (Gerente Geral)",
@@ -103,8 +103,8 @@ def main():
         status="Aberto",
     )
 
-    item1 = ItemPedido.create(db, idPedido=pedido.idPedido, idCardapio=prato1.idCardapio, quantidade=1, precoUnitario=75.0, status="Entregue")
-    item2 = ItemPedido.create(db, idPedido=pedido.idPedido, idCardapio=prato2.idCardapio, quantidade=1, precoUnitario=25.0, status="Entregue")
+    ItemPedido.create(db, idPedido=pedido.idPedido, idCardapio=prato1.idCardapio, quantidade=1, precoUnitario=75.0, status="Entregue")
+    ItemPedido.create(db, idPedido=pedido.idPedido, idCardapio=prato2.idCardapio, quantidade=1, precoUnitario=25.0, status="Entregue")
 
     token_garcom = criar_token(garcom.idUsuario, "Garcom", rest.idRestaurante)
     headers = {"Authorization": f"Bearer {token_garcom}"}
