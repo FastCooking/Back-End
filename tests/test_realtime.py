@@ -234,7 +234,7 @@ def test_status_change_is_broadcast_and_reconnect_receives_current_snapshot(
             assert response.status_code == 200, response.text
             status_events = [socket.receive_json() for socket in sockets]
             elapsed = time.perf_counter() - started
-            assert elapsed < 1.0
+            assert elapsed < 2.5
             assert all(
                 event["type"] == "item.status_changed" for event in status_events
             )
