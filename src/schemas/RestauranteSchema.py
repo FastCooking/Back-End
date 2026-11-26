@@ -2,6 +2,7 @@ import re
 import uuid
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from src.schemas.UsuarioSchema import FuncaoUsuario, validar_cpf, validar_senha_forte
 
 from src.schemas.UsuarioSchema import UsuarioResponse
 
@@ -152,7 +153,8 @@ class UsuarioInicialCreate(BaseModel):
     cpf: str | None = Field(default=None, description="CPF válido do usuário")
     email: EmailStr = Field(..., description="E-mail de login do usuário inicial")
     senha: str = Field(..., min_length=6, max_length=128, description="Senha de acesso em texto plano")
-    funcao: str = Field(default="Gerente", description="Função inicial do usuário (padrão: Gerente)")
+    funcao: FuncaoUsuario = Field(default="Gerente", description="Função inicial do usuário (padrão: Gerente)")
+    status: bool = Field(default=True, description="Status do usuário (ativo/inativo)")
 
     @field_validator("nome")
     @classmethod
@@ -161,6 +163,18 @@ class UsuarioInicialCreate(BaseModel):
         if len(v) < 2:
             raise ValueError("O nome deve ter no mínimo 2 caracteres.")
         return v
+
+    @field_validator("cpf")
+    @classmethod
+    def validar_campo_cpf(cls, v: str | None) -> str | None:
+        if v is not None:
+            return validar_cpf(v)
+        return v
+
+    @field_validator("senha")
+    @classmethod
+    def validar_campo_senha(cls, v: str) -> str:
+        return validar_senha_forte(v)
 
 
 class RestauranteComUsuarioCreate(BaseModel):

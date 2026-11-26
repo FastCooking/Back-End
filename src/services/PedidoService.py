@@ -128,7 +128,7 @@ class PedidoService:
                     precoUnitario=float(cardapio.preco),
                     observacao=item.observacao,
                     categoria=cardapio.categoria,
-                    liberadoParaPreparo=not eh_sobremesa(cardapio.categoria),
+                    liberadoParaPreparo=True,
                     origem=origem,
                     commit=False,
                 )
@@ -209,7 +209,7 @@ class PedidoService:
                     precoUnitario=float(cardapio.preco),
                     observacao=item.observacao,
                     categoria=cardapio.categoria,
-                    liberadoParaPreparo=not eh_sobremesa(cardapio.categoria),
+                    liberadoParaPreparo=True,
                     origem=origem,
                     commit=False,
                 )
@@ -1257,7 +1257,6 @@ class PedidoService:
                 Pedido.idRestaurante == usuario.idRestaurante,
                 Pedido.status.notin_(["Fechado", "Cancelado"]),
                 ItemPedido.status != "Cancelado",
-                ItemPedido.liberadoParaPreparo.is_(True),
                 ItemPedido.status.in_(["Pendente", "Em preparo"]),
             )
         )
@@ -1558,7 +1557,7 @@ class PedidoService:
             "dataCriacao": data_criacao.isoformat(),
             "liberadoParaPreparo": item.liberadoParaPreparo,
             "origem": origem,
-            "tempoEsperaMinutos": tempo_espera,
+            "tempoEsperaMinutos": int(tempo_espera),
             "pontuacao": pontuacao,
             "tempoPreparo": tempo_preparo_item or 15,
             "claimedByWaiterId": str(item.claimedByWaiterId) if item.claimedByWaiterId else None,

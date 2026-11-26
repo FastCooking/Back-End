@@ -418,7 +418,7 @@ async def test_hub_isolates_audience_and_removes_failed_connections():
     await hub.disconnect(cook)
     assert cook not in {subscription.websocket for subscription in hub._subscriptions}
 
-def test_sobremesa_fica_bloqueada_ate_liberacao_do_garcom(
+def test_sobremesa_entra_direto_na_fila_da_cozinha(
     realtime_environment,
 ):
     from src.services.PedidoService import PedidoService
@@ -437,29 +437,7 @@ def test_sobremesa_fica_bloqueada_ate_liberacao_do_garcom(
     created = _create_order(client, ids, ids["waiter"])
     item_id = created["itens"][0]["idItemPedido"]
 
-    # Confirmar que o item bloqueado não aparece na fila do garçom.
-    with session_factory() as db:
-        garcom = db.query(Usuario).filter_by(
-            idUsuario=ids["waiter"]
-        ).one()
-        snapshot = PedidoService(db).queue_snapshot(garcom)
-
-        assert all(
-            item["idItemPedido"] != item_id
-            for item in snapshot["items"]
-        )
-
-    # Liberar a sobremesa pela rota de garçom.
-    response = client.patch(
-        f"/pedidos/itens/{item_id}/liberar-sobremesa",
-        headers={
-            "Authorization": f"Bearer {_token(ids['waiter'], 'Garcom')}"
-        },
-    )
-
-    assert response.status_code == 200, response.text
-
-    # Após a liberação, o item deve entrar na fila como Pendente.
+    # Confirmar que a sobremesa já entra diretamente na fila da cozinha como Pendente.
     with session_factory() as db:
         garcom = db.query(Usuario).filter_by(
             idUsuario=ids["waiter"]
@@ -503,11 +481,3 @@ def test_cozinheiro_nao_pode_liberar_sobremesa(
     )
 
     assert response.status_code == 403
-
-    with session_factory() as db:
-        item = db.query(ItemPedido).filter_by(
-            idItemPedido=UUID(item_id)
-        ).one()
-
-        assert item.liberadoParaPreparo is False
-        assert item.status == "Pendente"

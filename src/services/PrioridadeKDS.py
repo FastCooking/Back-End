@@ -42,7 +42,7 @@ def calcular_pontuacao(
     data_criacao: datetime,
     agora: datetime | None = None,
     tempo_preparo: int | None = None,
-) -> tuple[float, float]:
+) -> tuple[int, float]:
     """
     Retorna (tempo de espera em minutos, pontuação dinâmica).
     Pontuação maior significa maior prioridade na fila.
@@ -67,4 +67,4 @@ def calcular_pontuacao(
     espera = segundos / 60.0
     pontuacao = regra["peso"] * (1 + espera / limite)
 
-    return round(espera, 2), round(pontuacao, 4)
+    return int(espera), round(pontuacao, 4)
