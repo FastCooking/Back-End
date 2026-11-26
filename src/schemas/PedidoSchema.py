@@ -1,0 +1,151 @@
+import uuid
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class PedidoItemCreate(BaseModel):
+    idCardapio: uuid.UUID
+    quantidade: int = Field(default=1, gt=0)
+    observacao: str | None = None
+
+
+class PedidoCreate(BaseModel):
+    idMesa: uuid.UUID
+    sessao_id: str | None = None
+    itens: list[PedidoItemCreate] = Field(min_length=1)
+
+
+class AdicionarItensMesaRequest(BaseModel):
+    sessao_id: str | None = None
+    itens: list[PedidoItemCreate] = Field(min_length=1)
+
+
+class RemoverItemRequest(BaseModel):
+    motivo: str | None = Field(default=None)
+    justificativa: str | None = Field(default=None)
+
+    @field_validator("motivo", "justificativa")
+    @classmethod
+    def validar_texto(cls, val: str | None) -> str | None:
+        return val.strip() if val is not None else None
+
+    @property
+    def motivo_efetivo(self) -> str | None:
+        return self.motivo if self.motivo is not None else self.justificativa
+
+
+class ConfirmacaoCancelamentoCliente(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ItemPedidoStatusUpdate(BaseModel):
+    status: Literal["Pendente", "Em preparo", "Pronto", "Entregue"]
+
+
+class ItemPayloadSchema(BaseModel):
+    item_id: uuid.UUID = Field(..., description="ID do produto no cardápio")
+    quantidade: int = Field(..., ge=1)
+    observacoes: str | None = None
+
+
+class PedidoCriarSchema(BaseModel):
+    sessao_id: str = Field(..., description="Identificador único da sessão/mesa")
+    idRestaurante: uuid.UUID
+    idMesa: uuid.UUID
+    idGarcom: uuid.UUID | None = None
+    itens: list[ItemPayloadSchema] = Field(min_length=1)
+
+
+class ItemResponseSchema(BaseModel):
+    idItemPedido: uuid.UUID
+    idCardapio: uuid.UUID
+    quantidade: int
+    precoUnitario: float
+    status: str
+    observacao: str | None
+    categoria: str | None = None
+    prioridade: int = 1
+    origem: str = "CLIENTE"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PedidoResponseSchema(BaseModel):
+    idPedido: uuid.UUID
+    sessao_id: str | None
+    status: str
+    dataAbertura: datetime
+    desconto: float = 0.0
+    tipoDesconto: str | None = None
+    itens: list[ItemResponseSchema] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ItemPedidoQuantidadeUpdate(BaseModel):
+    quantidade: int = Field(..., ge=0, description="Nova quantidade do item (0 cancela o item)")
+    motivo: str | None = None
+
+    @field_validator("motivo")
+    @classmethod
+    def validar_motivo(cls, motivo: str | None) -> str | None:
+        return motivo.strip() if motivo is not None else None
+
+
+class ItemCancelamentoRequest(BaseModel):
+    justificativa: str | None = Field(None, description="Justificativa para cancelamento do item (RF11)")
+    motivo: str | None = Field(None, description="Motivo alternativo para cancelamento")
+
+
+class DescontoApplyRequest(BaseModel):
+    senhaGerente: str | None = Field(None, description="Senha de autenticação para autorizar o desconto")
+    senhaGarcom: str | None = Field(None, description="Senha do garçom autorizador da operação")
+    senha: str | None = Field(None, description="Alias para senha de autenticação")
+    tipo: str = Field(default="valor", description="Tipo do desconto: 'percentual' ou 'valor'")
+    valor: float = Field(..., gt=0, description="Valor do desconto (reais ou percentual)")
+    motivo: str | None = Field(None, description="Motivo ou justificativa da concessão do desconto")
+    justificativa: str | None = Field(None, description="Alias para motivo")
+    emailGerente: str | None = Field(None, description="E-mail opcional do autorizador para identificação direta")
+    idGerente: uuid.UUID | None = Field(None, description="ID opcional do autorizador para identificação direta")
+
+    @property
+    def senha_efetiva(self) -> str:
+        s = self.senhaGarcom or self.senhaGerente or self.senha or ""
+        return s.strip()
+
+    @property
+    def motivo_efetivo(self) -> str:
+        return (self.motivo or self.justificativa or "").strip()
+
+
+class DescontoRemoverRequest(BaseModel):
+    senhaGerente: str | None = Field(None, description="Senha para autorizar remoção do desconto")
+    senhaGarcom: str | None = Field(None, description="Senha do garçom para autorizar remoção")
+    senha: str | None = Field(None, description="Alias para senha de autenticação")
+    motivo: str | None = Field(None, description="Motivo da remoção do desconto")
+    emailGerente: str | None = Field(None, description="E-mail opcional do autorizador")
+    idGerente: uuid.UUID | None = Field(None, description="ID opcional do autorizador")
+
+    @property
+    def senha_efetiva(self) -> str:
+        s = self.senhaGarcom or self.senhaGerente or self.senha or ""
+        return s.strip()
+
+
+class LogDescontoResponseSchema(BaseModel):
+    idLogDesconto: uuid.UUID
+    idRestaurante: uuid.UUID
+    idPedido: uuid.UUID | None = None
+    idUsuario: uuid.UUID | None = None
+    usuario: str
+    funcaoUsuario: str | None = None
+    valorDesconto: float
+    tipoDesconto: str | None = None
+    motivo: str | None = None
+    sucesso: bool
+    motivoFalha: str | None = None
+    dataHora: datetime
+
+    model_config = ConfigDict(from_attributes=True)

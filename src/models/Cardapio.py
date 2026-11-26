@@ -1,0 +1,153 @@
+import uuid
+from typing import Optional
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Session, relationship
+
+from src.database.connection import Base
+
+
+class Cardapio(Base):
+    __tablename__ = "Cardapio"
+    __table_args__ = (
+        Index("ix_cardapio_rest_status_cat", "idRestaurante", "status", "categoria"),
+    )
+
+    idCardapio: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    idRestaurante: uuid.UUID = Column(
+        UUID(as_uuid=True),
+        ForeignKey("Restaurante.idRestaurante", onupdate="CASCADE", ondelete="CASCADE"),
+        nullable=False,
+    )
+    nome: str = Column(String(150), nullable=False)
+    pathImage: str = Column(Text, nullable=True)
+    descricao: str = Column(Text, nullable=True)
+    preco: float = Column(Numeric(10, 2), nullable=False)
+    categoria: str = Column(String(100), nullable=False)
+    tempoPreparo: int = Column(Integer, nullable=False, default=15, server_default=text("15"))
+    status: bool = Column(Boolean, nullable=False, default=True)
+
+    # Relacionamentos
+    restaurante = relationship("Restaurante", back_populates="cardapio")
+    itens_pedido = relationship("ItemPedido", back_populates="cardapio")
+    fichas_tecnicas = relationship("FichaTecnica", back_populates="cardapio", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Cardapio(id={self.idCardapio}, nome='{self.nome}', pathImage='{self.pathImage}', preco={self.preco}, status={self.status})>"
+
+    @classmethod
+    def create(
+        cls,
+        db: Session,
+        idRestaurante: uuid.UUID | str,
+        nome: str,
+        preco: float,
+        categoria: str,
+        tempoPreparo: int = 15,
+        pathImage: str | None = None,
+        descricao: str | None = None,
+        status: bool = True,
+    ) -> "Cardapio":
+        item = cls(
+            idRestaurante=idRestaurante,
+            nome=nome,
+            preco=preco,
+            categoria=categoria,
+            tempoPreparo=tempoPreparo,
+            pathImage=pathImage,
+            descricao=descricao,
+            status=status,
+        )
+
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+
+        return item
+
+    @classmethod
+    def get_by_id(cls, db: Session, idCardapio: uuid.UUID | str) -> Optional["Cardapio"]:
+        """Busca item do cardápio pelo ID."""
+        return db.query(cls).filter(cls.idCardapio == idCardapio).first()
+
+    @classmethod
+    def get_all_by_restaurante(
+        cls,
+        db: Session,
+        idRestaurante: uuid.UUID | str,
+        apenas_ativos: bool = False,
+        categoria: str | None = None,
+    ) -> list["Cardapio"]:
+        """Lista itens do cardápio de um restaurante com filtros opcionais."""
+        query = db.query(cls).filter(cls.idRestaurante == idRestaurante)
+        if apenas_ativos:
+            query = query.filter(cls.status.is_(True))
+        if categoria:
+            query = query.filter(cls.categoria == categoria)
+        return query.order_by(cls.categoria, cls.nome).all()
+
+    def update(
+        self,
+        db: Session,
+        nome: str | None = None,
+        pathImage: str | None = None,
+        descricao: str | None = None,
+        preco: float | None = None,
+        categoria: str | None = None,
+        tempoPreparo: int | None = None,
+        status: bool | None = None,
+    ) -> "Cardapio":
+        """Atualiza os dados de um item do cardápio."""
+        if nome is not None:
+            self.nome = nome
+        if pathImage is not None:
+            self.pathImage = pathImage
+        if descricao is not None:
+            self.descricao = descricao
+        if preco is not None:
+            self.preco = preco
+        if categoria is not None:
+            self.categoria = categoria
+        if tempoPreparo is not None:
+            self.tempoPreparo = tempoPreparo
+        if status is not None:
+            self.status = status
+        db.commit()
+        db.refresh(self)
+        return self
+
+    def disable(self, db: Session) -> bool:
+        """Desativa o item do cardápio do banco de dados."""
+        self.status = False
+        db.commit()
+        db.refresh(self)
+        return True
+
+    def able(self, db: Session) -> bool:
+        """Ativa o item do cardápio do banco de dados."""
+        self.status = True
+        db.commit()
+        db.refresh(self)
+        return True
+
+    def delete(self, db: Session) -> bool:
+        """Remove o item do cardápio do banco de dados."""
+        db.delete(self)
+        db.commit()
+        return True
