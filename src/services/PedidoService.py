@@ -453,10 +453,7 @@ class PedidoService:
             )
 
         if not item.liberadoParaPreparo:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Este item ainda não foi liberado para preparo.",
-            )
+            item.liberadoParaPreparo = True
 
         current_index = (
             STATUS_ITEM.index(item.status)
